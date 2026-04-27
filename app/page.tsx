@@ -8,12 +8,58 @@ interface Lead {
   address: string;
   phone: string;
   website: string;
+  business_status: string;
+  opening_hours: string;
+  price_level: string;
+  rating: string;
+  user_ratings_total: string;
+  types: string;
   found_at: string;
 }
 
 interface ApiResponse {
   leads: Lead[];
   count: number;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  if (!status) return <span className="text-zinc-400">—</span>;
+  const isOperational = status === 'OPERATIONAL';
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+      isOperational ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+    }`}>
+      {isOperational ? 'Operational' : status.replace(/_/g, ' ').toLowerCase()}
+    </span>
+  );
+}
+
+function PriceLevel({ level }: { level: string }) {
+  if (level === '') return <span className="text-zinc-400">—</span>;
+  const n = parseInt(level);
+  if (n === 0) return <span className="text-zinc-500 text-xs">Free</span>;
+  return <span className="text-zinc-700">{'$'.repeat(n)}</span>;
+}
+
+function RatingCell({ rating, total }: { rating: string; total: string }) {
+  if (!rating) return <span className="text-zinc-400">—</span>;
+  return (
+    <span className="text-zinc-700">
+      {rating} <span className="text-amber-400">★</span>
+      {total && <span className="text-zinc-400 text-xs ml-1">({total})</span>}
+    </span>
+  );
+}
+
+function HoursCell({ hours }: { hours: string }) {
+  if (!hours) return <span className="text-zinc-400">—</span>;
+  const days = hours.split(' | ');
+  return (
+    <span title={hours} className="cursor-help text-zinc-600 text-xs leading-relaxed">
+      {days[0]}
+      {days.length > 1 && <span className="text-zinc-400"> +{days.length - 1} more</span>}
+    </span>
+  );
 }
 
 export default function Home() {
@@ -38,7 +84,8 @@ export default function Home() {
       });
 
       if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Server error: ${res.status}`);
       }
 
       const data: ApiResponse = await res.json();
@@ -52,7 +99,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      <div className="max-w-5xl mx-auto px-4 py-12">
+      <div className="max-w-7xl mx-auto px-4 py-12">
         <div className="mb-10">
           <h1 className="text-3xl font-bold text-zinc-900">Lead Finder</h1>
           <p className="mt-1 text-zinc-500">Find local businesses and export them to Google Sheets.</p>
@@ -151,31 +198,51 @@ export default function Home() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-200 bg-zinc-50">
-                    <th className="px-4 py-3 text-left font-medium text-zinc-600">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-600">Address</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-600">Phone</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-600">Website</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Name</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Address</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Phone</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Website</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Status</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Rating</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Price</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Types</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">Hours</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.leads.map((lead, i) => (
                     <tr key={lead.place_id} className={i % 2 === 0 ? '' : 'bg-zinc-50'}>
-                      <td className="px-4 py-3 font-medium text-zinc-900">{lead.name}</td>
-                      <td className="px-4 py-3 text-zinc-600">{lead.address}</td>
-                      <td className="px-4 py-3 text-zinc-600">{lead.phone || '—'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{lead.name}</td>
+                      <td className="px-4 py-3 text-zinc-600 max-w-[200px]">{lead.address}</td>
+                      <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{lead.phone || '—'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {lead.website ? (
                           <a
                             href={lead.website}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline truncate block max-w-[200px]"
+                            className="text-blue-600 hover:underline truncate block max-w-[160px]"
                           >
                             {lead.website.replace(/^https?:\/\//, '')}
                           </a>
                         ) : (
                           <span className="text-zinc-400">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StatusBadge status={lead.business_status} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <RatingCell rating={lead.rating} total={lead.user_ratings_total} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <PriceLevel level={lead.price_level} />
+                      </td>
+                      <td className="px-4 py-3 text-zinc-600 max-w-[180px]">
+                        {lead.types || <span className="text-zinc-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <HoursCell hours={lead.opening_hours} />
                       </td>
                     </tr>
                   ))}
