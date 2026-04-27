@@ -21,6 +21,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Upstream error: ${response.status}` }, { status: 502 });
   }
 
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    return NextResponse.json({ error: 'Workflow returned an empty response' }, { status: 502 });
+  }
   return NextResponse.json(data);
 }
