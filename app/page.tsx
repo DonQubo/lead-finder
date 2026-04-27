@@ -17,10 +17,28 @@ interface Lead {
   found_at: string;
 }
 
-interface SearchResponse { leads: Lead[]; count: number; }
-interface LeadsResponse  { leads: Lead[]; count: number; }
+interface SavedSearch {
+  id: string;
+  timestamp: string;
+  business_type: string;
+  location: string;
+  radius: string;
+  max_results: string;
+}
 
 const DEFAULT_SHEET_ID = '1ZP3TWy5kzvkKegxTEwzoVigOHFFBXC5tIsIh1KFFuzg';
+const HISTORY_KEY = 'leadFinderHistory';
+const SHEET_KEY = 'leadFinderSheetId';
+const MAX_HISTORY = 10;
+
+const PRICE_OPTIONS = [
+  { value: '', label: '?' },
+  { value: '0', label: 'Free' },
+  { value: '1', label: '$' },
+  { value: '2', label: '$$' },
+  { value: '3', label: '$$$' },
+  { value: '4', label: '$$$$' },
+];
 
 function extractSheetId(input: string): string {
   const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -43,6 +61,36 @@ function exportCSV(leads: Lead[]) {
   URL.revokeObjectURL(url);
 }
 
+function applyFilters(leads: Lead[], minRating: number, operationalOnly: boolean, priceLevels: string[]): Lead[] {
+  return leads.filter(lead => {
+    if (operationalOnly && lead.business_status !== 'OPERATIONAL') return false;
+    if (minRating > 0) {
+      const r = parseFloat(lead.rating);
+      if (isNaN(r) || r < minRating) return false;
+    }
+    if (priceLevels.length > 0 && !priceLevels.includes(lead.price_level)) return false;
+    return true;
+  });
+}
+
+function saveToHistory(history: SavedSearch[], entry: Omit<SavedSearch, 'id' | 'timestamp'>): SavedSearch[] {
+  const newEntry: SavedSearch = { id: Date.now().toString(), timestamp: new Date().toISOString(), ...entry };
+  const deduped = history.filter(s =>
+    !(s.business_type === entry.business_type && s.location === entry.location && s.radius === entry.radius)
+  );
+  return [newEntry, ...deduped].slice(0, MAX_HISTORY);
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 function StatusBadge({ status }: { status: string }) {
   if (!status) return <span className="text-zinc-400">—</span>;
   const ok = status === 'OPERATIONAL';
@@ -61,7 +109,12 @@ function PriceLevel({ level }: { level: string }) {
 
 function RatingCell({ rating, total }: { rating: string; total: string }) {
   if (!rating) return <span className="text-zinc-400">—</span>;
-  return <span className="text-zinc-700">{rating} <span className="text-amber-400">★</span>{total && <span className="text-zinc-400 text-xs ml-1">({total})</span>}</span>;
+  return (
+    <span className="text-zinc-700">
+      {rating} <span className="text-amber-400">★</span>
+      {total && <span className="text-zinc-400 text-xs ml-1">({total})</span>}
+    </span>
+  );
 }
 
 function HoursCell({ hours }: { hours: string }) {
@@ -109,18 +162,90 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
   );
 }
 
+interface FiltersBarProps {
+  minRating: number;
+  setMinRating: (v: number) => void;
+  operationalOnly: boolean;
+  setOperationalOnly: (v: boolean) => void;
+  priceLevels: string[];
+  setPriceLevels: (v: string[]) => void;
+  total: number;
+  filtered: number;
+}
+
+function FiltersBar({ minRating, setMinRating, operationalOnly, setOperationalOnly, priceLevels, setPriceLevels, total, filtered }: FiltersBarProps) {
+  function togglePrice(p: string) {
+    setPriceLevels(priceLevels.includes(p) ? priceLevels.filter(x => x !== p) : [...priceLevels, p]);
+  }
+  const hasActive = minRating > 0 || operationalOnly || priceLevels.length > 0;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 bg-white rounded-xl border border-zinc-200 shadow-sm text-sm">
+      <div className="flex items-center gap-1.5">
+        <span className="text-zinc-500">Rating</span>
+        <select value={minRating} onChange={e => setMinRating(Number(e.target.value))}
+          className="rounded border border-zinc-200 px-2 py-1 text-sm text-zinc-700 bg-transparent focus:outline-none">
+          <option value={0}>Any</option>
+          <option value={3}>3+</option>
+          <option value={3.5}>3.5+</option>
+          <option value={4}>4+</option>
+          <option value={4.5}>4.5+</option>
+        </select>
+      </div>
+
+      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox" checked={operationalOnly} onChange={e => setOperationalOnly(e.target.checked)}
+          className="rounded border-zinc-300 accent-zinc-900" />
+        <span className="text-zinc-600">Operational only</span>
+      </label>
+
+      <div className="flex items-center gap-1.5">
+        <span className="text-zinc-500">Price</span>
+        <div className="flex gap-1">
+          {PRICE_OPTIONS.map(({ value, label }) => (
+            <button key={value} type="button" onClick={() => togglePrice(value)}
+              className={`rounded px-1.5 py-0.5 text-xs font-medium border transition-colors ${
+                priceLevels.length === 0 || priceLevels.includes(value)
+                  ? 'bg-zinc-900 text-white border-zinc-900'
+                  : 'bg-white text-zinc-400 border-zinc-200'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="ml-auto flex items-center gap-3">
+        {hasActive && (
+          <button type="button" onClick={() => { setMinRating(0); setOperationalOnly(false); setPriceLevels([]); }}
+            className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors">
+            Clear filters
+          </button>
+        )}
+        <span className="text-zinc-400 text-xs font-medium">
+          {filtered === total ? `${total}` : `${filtered} / ${total}`} results
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'search' | 'sheet'>('search');
 
-  // Search tab state
+  // Search form
   const [businessType, setBusinessType] = useState('');
   const [location, setLocation]         = useState('');
   const [radius, setRadius]             = useState('1000');
+  const [maxResults, setMaxResults]     = useState('20');
   const [searching, setSearching]       = useState(false);
-  const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
+  const [searchResult, setSearchResult] = useState<{ leads: Lead[]; count: number } | null>(null);
   const [searchError, setSearchError]   = useState<string | null>(null);
 
-  // Sheet tab state
+  // History
+  const [searchHistory, setSearchHistory] = useState<SavedSearch[]>([]);
+
+  // Sheet tab
   const [sheetId, setSheetId]           = useState('');
   const [sheetInput, setSheetInput]     = useState('');
   const [sheetError, setSheetError]     = useState<string | null>(null);
@@ -130,12 +255,25 @@ export default function Home() {
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing]         = useState(false);
 
+  // Filters (shared between tabs)
+  const [filterRating, setFilterRating]           = useState(0);
+  const [filterOperational, setFilterOperational] = useState(false);
+  const [filterPriceLevels, setFilterPriceLevels] = useState<string[]>([]);
+
   useEffect(() => {
-    const saved = localStorage.getItem('leadFinderSheetId');
-    if (saved) { setSheetId(saved); setSheetInput(saved); }
+    const savedSheet = localStorage.getItem(SHEET_KEY);
+    if (savedSheet) { setSheetId(savedSheet); setSheetInput(savedSheet); }
+    try {
+      const h = localStorage.getItem(HISTORY_KEY);
+      if (h) setSearchHistory(JSON.parse(h));
+    } catch {}
   }, []);
 
-  const activeSheetId = sheetId || DEFAULT_SHEET_ID;
+  const activeSheetId   = sheetId || DEFAULT_SHEET_ID;
+  const filteredSearch  = searchResult ? applyFilters(searchResult.leads, filterRating, filterOperational, filterPriceLevels) : [];
+  const filteredSheet   = allLeads    ? applyFilters(allLeads,           filterRating, filterOperational, filterPriceLevels) : [];
+
+  const searchDuration = maxResults === '60' ? '30–55 seconds' : maxResults === '40' ? '25–40 seconds' : '20–30 seconds';
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -146,13 +284,23 @@ export default function Home() {
       const res = await fetch('/api/find-leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_type: businessType, location, radius: Number(radius), sheet_id: sheetId || undefined }),
+        body: JSON.stringify({
+          business_type: businessType,
+          location,
+          radius: Number(radius),
+          max_results: Number(maxResults),
+          sheet_id: sheetId || undefined,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `Server error: ${res.status}`);
       }
-      setSearchResult(await res.json());
+      const data = await res.json();
+      setSearchResult(data);
+      const next = saveToHistory(searchHistory, { business_type: businessType, location, radius, max_results: maxResults });
+      setSearchHistory(next);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -160,12 +308,27 @@ export default function Home() {
     }
   }
 
+  function fillFromHistory(s: SavedSearch) {
+    setBusinessType(s.business_type);
+    setLocation(s.location);
+    setRadius(s.radius);
+    setMaxResults(s.max_results || '20');
+    setSearchResult(null);
+    setSearchError(null);
+  }
+
+  function removeHistory(id: string) {
+    const next = searchHistory.filter(s => s.id !== id);
+    setSearchHistory(next);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  }
+
   function handleSaveSheet() {
     const id = extractSheetId(sheetInput);
     if (!id) { setSheetError('Could not find a valid sheet ID in that URL. Paste the full Google Sheets URL or just the ID.'); return; }
     setSheetError(null);
     setSheetId(id);
-    localStorage.setItem('leadFinderSheetId', id);
+    localStorage.setItem(SHEET_KEY, id);
     setAllLeads(null);
   }
 
@@ -174,7 +337,7 @@ export default function Home() {
     setSheetInput('');
     setSheetError(null);
     setAllLeads(null);
-    localStorage.removeItem('leadFinderSheetId');
+    localStorage.removeItem(SHEET_KEY);
   }
 
   async function handleLoadLeads() {
@@ -186,7 +349,7 @@ export default function Home() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `Server error: ${res.status}`);
       }
-      const data: LeadsResponse = await res.json();
+      const data = await res.json();
       setAllLeads(data.leads);
     } catch (err) {
       setLeadsError(err instanceof Error ? err.message : 'Something went wrong');
@@ -229,15 +392,12 @@ export default function Home() {
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-zinc-200">
           {(['search', 'sheet'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+            <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === tab
                   ? 'bg-white border border-b-white border-zinc-200 text-zinc-900 -mb-px'
                   : 'text-zinc-500 hover:text-zinc-700'
-              }`}
-            >
+              }`}>
               {tab === 'search' ? 'Find Leads' : 'Sheet'}
             </button>
           ))}
@@ -245,24 +405,24 @@ export default function Home() {
 
         {/* ── SEARCH TAB ── */}
         {activeTab === 'search' && (
-          <div>
+          <div className="space-y-4">
             <form onSubmit={handleSearch} className="bg-white rounded-xl border border-zinc-200 p-6 shadow-sm">
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-4">
                 <div>
-                  <label htmlFor="businessType" className="block text-sm font-medium text-zinc-700 mb-1">Business type</label>
-                  <input id="businessType" type="text" required placeholder="e.g. restaurant, gym, school"
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Business type</label>
+                  <input type="text" required placeholder="e.g. restaurant, gym"
                     value={businessType} onChange={e => setBusinessType(e.target.value)}
                     className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900" />
                 </div>
                 <div>
-                  <label htmlFor="location" className="block text-sm font-medium text-zinc-700 mb-1">Location</label>
-                  <input id="location" type="text" required placeholder="e.g. Austin, TX"
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Location</label>
+                  <input type="text" required placeholder="e.g. Austin, TX"
                     value={location} onChange={e => setLocation(e.target.value)}
                     className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900" />
                 </div>
                 <div>
-                  <label htmlFor="radius" className="block text-sm font-medium text-zinc-700 mb-1">Radius</label>
-                  <select id="radius" value={radius} onChange={e => setRadius(e.target.value)}
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Radius</label>
+                  <select value={radius} onChange={e => setRadius(e.target.value)}
                     className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900">
                     <option value="500">500 m</option>
                     <option value="1000">1 km</option>
@@ -271,39 +431,82 @@ export default function Home() {
                     <option value="10000">10 km</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Max results</label>
+                  <select value={maxResults} onChange={e => setMaxResults(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900">
+                    <option value="20">20 results</option>
+                    <option value="40">40 results</option>
+                    <option value="60">60 results</option>
+                  </select>
+                </div>
               </div>
               <div className="mt-5 flex items-center gap-4">
                 <button type="submit" disabled={searching}
                   className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                  {searching && <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>}
+                  {searching && (
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                  )}
                   {searching ? 'Searching…' : 'Find leads'}
                 </button>
                 {sheetId && <span className="text-xs text-zinc-400">Writing to custom sheet</span>}
               </div>
             </form>
 
-            {searching && <p className="mt-4 text-sm text-zinc-500">This usually takes 20–30 seconds…</p>}
+            {/* Recent searches */}
+            {searchHistory.length > 0 && !searching && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-zinc-400 whitespace-nowrap">Recent:</span>
+                {searchHistory.slice(0, 5).map(s => (
+                  <div key={s.id} className="flex items-center rounded-full bg-white border border-zinc-200 pl-3 pr-1 py-1 text-xs shadow-sm">
+                    <button type="button" onClick={() => fillFromHistory(s)} className="text-zinc-600 hover:text-zinc-900">
+                      {s.business_type} · {s.location} · {Number(s.radius) >= 1000 ? `${Number(s.radius)/1000}km` : `${s.radius}m`}
+                      <span className="text-zinc-400 ml-1.5">{relativeTime(s.timestamp)}</span>
+                    </button>
+                    <button type="button" onClick={() => removeHistory(s.id)}
+                      className="ml-2 mr-0.5 text-zinc-300 hover:text-zinc-500 text-base leading-none">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {searching && (
+              <p className="text-sm text-zinc-500">This usually takes {searchDuration}…</p>
+            )}
 
             {searchError && (
-              <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{searchError}</div>
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{searchError}</div>
             )}
 
             {searchResult && searchResult.count === 0 && (
-              <div className="mt-6 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-500">
+              <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-500">
                 All businesses from this search are already in your sheet.
               </div>
             )}
 
             {searchResult && searchResult.count > 0 && (
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-zinc-500">{searchResult.count} new lead{searchResult.count !== 1 ? 's' : ''} added to your sheet.</p>
-                  <button onClick={() => exportCSV(searchResult.leads)}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-zinc-500">
+                    {searchResult.count} new lead{searchResult.count !== 1 ? 's' : ''} added to your sheet.
+                  </p>
+                  <button onClick={() => exportCSV(filteredSearch)}
                     className="text-sm text-zinc-600 hover:text-zinc-900 underline underline-offset-2">
                     Export CSV
                   </button>
                 </div>
-                <LeadsTable leads={searchResult.leads} />
+                <FiltersBar
+                  minRating={filterRating} setMinRating={setFilterRating}
+                  operationalOnly={filterOperational} setOperationalOnly={setFilterOperational}
+                  priceLevels={filterPriceLevels} setPriceLevels={setFilterPriceLevels}
+                  total={searchResult.leads.length} filtered={filteredSearch.length}
+                />
+                {filteredSearch.length === 0
+                  ? <p className="text-sm text-zinc-400 text-center py-8">No results match the current filters.</p>
+                  : <LeadsTable leads={filteredSearch} />}
               </div>
             )}
           </div>
@@ -323,7 +526,7 @@ export default function Home() {
                     className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900" />
                   {sheetError && <p className="mt-1 text-xs text-red-600">{sheetError}</p>}
                   {sheetId
-                    ? <p className="mt-1 text-xs text-zinc-400">Active sheet ID: <span className="font-mono">{sheetId}</span></p>
+                    ? <p className="mt-1 text-xs text-zinc-400">Active: <span className="font-mono">{sheetId}</span></p>
                     : <p className="mt-1 text-xs text-zinc-400">Using default sheet.</p>}
                 </div>
                 <button onClick={handleSaveSheet}
@@ -347,28 +550,47 @@ export default function Home() {
                 </h2>
                 <div className="flex items-center gap-3">
                   {allLeads && allLeads.length > 0 && (
-                    <button onClick={() => exportCSV(allLeads)}
+                    <button onClick={() => exportCSV(filteredSheet)}
                       className="text-sm text-zinc-600 hover:text-zinc-900 underline underline-offset-2">
                       Export CSV
                     </button>
                   )}
                   <button onClick={handleLoadLeads} disabled={loadingLeads}
                     className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 transition-colors">
-                    {loadingLeads && <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>}
+                    {loadingLeads && (
+                      <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                      </svg>
+                    )}
                     {loadingLeads ? 'Loading…' : allLeads !== null ? 'Refresh' : 'Load leads'}
                   </button>
                 </div>
               </div>
 
-              {leadsError && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{leadsError}</div>}
+              {leadsError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{leadsError}</div>
+              )}
 
               {allLeads === null && !loadingLeads && (
-                <p className="text-sm text-zinc-400">Click "Load leads" to view all leads in your sheet.</p>
+                <p className="text-sm text-zinc-400">Click &quot;Load leads&quot; to view all leads in your sheet.</p>
               )}
               {allLeads !== null && allLeads.length === 0 && (
                 <p className="text-sm text-zinc-400">No leads in the sheet yet.</p>
               )}
-              {allLeads !== null && allLeads.length > 0 && <LeadsTable leads={allLeads} />}
+              {allLeads !== null && allLeads.length > 0 && (
+                <div className="space-y-3">
+                  <FiltersBar
+                    minRating={filterRating} setMinRating={setFilterRating}
+                    operationalOnly={filterOperational} setOperationalOnly={setFilterOperational}
+                    priceLevels={filterPriceLevels} setPriceLevels={setFilterPriceLevels}
+                    total={allLeads.length} filtered={filteredSheet.length}
+                  />
+                  {filteredSheet.length === 0
+                    ? <p className="text-sm text-zinc-400 text-center py-8">No results match the current filters.</p>
+                    : <LeadsTable leads={filteredSheet} />}
+                </div>
+              )}
             </div>
 
             {/* Danger Zone */}
