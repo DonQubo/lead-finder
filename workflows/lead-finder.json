@@ -1,0 +1,286 @@
+{
+  "name": "Lead Finder",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-finder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 432],
+      "webhookId": "205946c0-ea93-4e0b-8359-86f87b942155",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://places.googleapis.com/v1/places:searchText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Goog-Api-Key", "value": "YOUR_GOOGLE_PLACES_API_KEY" },
+            { "name": "X-Goog-FieldMask", "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,nextPageToken" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ textQuery: $json.body.business_type + ' in ' + $json.body.location, maxResultCount: 20 }) }}",
+        "options": {}
+      },
+      "id": "node-textsearch",
+      "name": "Google Places Text Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [464, 432]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.results = [];\n\nconst body = $('Webhook').first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + ' in ' + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p => ({\n  place_id: p.id,\n  name: p.displayName?.text || '',\n  address: p.formattedAddress || '',\n  phone: p.nationalPhoneNumber || '',\n  website: p.websiteUri || '',\n  business_status: p.businessStatus || '',\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n  rating: p.rating !== undefined ? String(p.rating) : '',\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n  types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : ''\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nstaticData.textQuery = textQuery;\nstaticData.newPlaces = places;\nstaticData.nextToken = nextToken;\nstaticData.maxResults = maxResults;\nstaticData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken && maxPages > 1,\n  pages_remaining: staticData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
+      },
+      "id": "node-processresults",
+      "name": "Process Text Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 432]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "has-more-check",
+              "leftValue": "={{ $json.has_more }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-hasmorepages",
+      "name": "Has More Pages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [912, 432]
+    },
+    {
+      "parameters": { "resume": "timeInterval", "amount": 5, "unit": "seconds" },
+      "id": "node-wait-pagetoken",
+      "name": "Wait for Token",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1024, 600],
+      "webhookId": "b7e3f1a2-c4d5-6789-bcde-f01234567890"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://places.googleapis.com/v1/places:searchText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Goog-Api-Key", "value": "YOUR_GOOGLE_PLACES_API_KEY" },
+            { "name": "X-Goog-FieldMask", "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,nextPageToken" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ textQuery: $json.text_query, maxResultCount: 20, pageToken: $json.next_page_token }) }}",
+        "options": {}
+      },
+      "id": "node-fetchnextpage",
+      "name": "Fetch Next Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1248, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst page = $input.first().json;\n\nif (page.places && page.places.length > 0) {\n  const newPlaces = page.places.map(p => ({\n    place_id: p.id,\n    name: p.displayName?.text || '',\n    address: p.formattedAddress || '',\n    phone: p.nationalPhoneNumber || '',\n    website: p.websiteUri || '',\n    business_status: p.businessStatus || '',\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n    rating: p.rating !== undefined ? String(p.rating) : '',\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n    types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : ''\n  }));\n  staticData.newPlaces = [...(staticData.newPlaces || []), ...newPlaces];\n  staticData.nextToken = page.nextPageToken || null;\n}\n\nstaticData.pagesRemaining = Math.max(0, (staticData.pagesRemaining || 1) - 1);\n\nif (staticData.newPlaces.length > staticData.maxResults) {\n  staticData.newPlaces = staticData.newPlaces.slice(0, staticData.maxResults);\n}\n\nconst hasMore = !!staticData.nextToken && staticData.pagesRemaining > 0;\n\nreturn [{ json: { has_more: hasMore, place_count: staticData.newPlaces.length, next_page_token: staticData.nextToken, text_query: staticData.textQuery } }];"
+      },
+      "id": "node-accumulatepage",
+      "name": "Accumulate Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1472, 600]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "={{ $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID' }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Sheet1", "mode": "name" },
+        "options": {}
+      },
+      "id": "node-readsheets",
+      "name": "Read Existing Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1136, 432],
+      "alwaysOutputData": true,
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst newPlaces = staticData.newPlaces || [];\n\nconst existingIds = new Set(\n  $input.all()\n    .map(item => item.json.place_id)\n    .filter(Boolean)\n);\n\nconst toProcess = newPlaces.filter(p => !existingIds.has(p.place_id));\n\nif (toProcess.length === 0) {\n  return [{ json: { __skip: true } }];\n}\n\nreturn toProcess.map(p => ({ json: p }));"
+      },
+      "id": "node-deduplicate",
+      "name": "Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 432]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.__skip === true }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-newleads",
+      "name": "Has New Leads",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1584, 432]
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "node-splitbatches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1808, 312]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.results) staticData.results = [];\n\nconst lead = { ...$input.first().json, found_at: new Date().toISOString() };\n\nstaticData.results.push(lead);\nreturn [{ json: lead }];"
+      },
+      "id": "node-formatlead",
+      "name": "Format Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2032, 144]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst leads = staticData.results || [];\n\nstaticData.results = [];\nstaticData.newPlaces = [];\n\nreturn [{ json: { leads, count: leads.length } }];"
+      },
+      "id": "node-compileresults",
+      "name": "Compile Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2032, 336],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const leads = $input.first().json.leads || [];\nconst sheetId = $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID';\nconst columns = ['place_id', 'name', 'address', 'phone', 'website', 'business_status', 'opening_hours', 'price_level', 'rating', 'user_ratings_total', 'types', 'found_at'];\nconst values = leads.map(lead => columns.map(col => String(lead[col] != null ? lead[col] : '')));\nreturn [{ json: { values, sheet_id: sheetId } }];"
+      },
+      "id": "node-preparebatch",
+      "name": "Prepare Batch Write",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2256, 336]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://sheets.googleapis.com/v4/spreadsheets/' + $json.sheet_id + '/values/Sheet1:append' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "valueInputOption", "value": "USER_ENTERED" },
+            { "name": "insertDataOption", "value": "INSERT_ROWS" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: $json.values }) }}",
+        "options": {}
+      },
+      "id": "node-batchappend",
+      "name": "Batch Append to Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2480, 336],
+      "onError": "continueRegularOutput",
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Compile Results').first().json) }}",
+        "options": {}
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [2704, 336]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ leads: [], count: 0 }) }}",
+        "options": {}
+      },
+      "id": "node-respond-empty",
+      "name": "Respond (no new leads)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1808, 504]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Google Places Text Search", "type": "main", "index": 0 }]] },
+    "Google Places Text Search": { "main": [[{ "node": "Process Text Search Results", "type": "main", "index": 0 }]] },
+    "Process Text Search Results": { "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]] },
+    "Has More Pages": {
+      "main": [
+        [{ "node": "Wait for Token", "type": "main", "index": 0 }],
+        [{ "node": "Read Existing Leads", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait for Token": { "main": [[{ "node": "Fetch Next Page", "type": "main", "index": 0 }]] },
+    "Fetch Next Page": { "main": [[{ "node": "Accumulate Page", "type": "main", "index": 0 }]] },
+    "Accumulate Page": { "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]] },
+    "Read Existing Leads": { "main": [[{ "node": "Deduplicate", "type": "main", "index": 0 }]] },
+    "Deduplicate": { "main": [[{ "node": "Has New Leads", "type": "main", "index": 0 }]] },
+    "Has New Leads": {
+      "main": [
+        [{ "node": "Respond (no new leads)", "type": "main", "index": 0 }],
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [{ "node": "Compile Results", "type": "main", "index": 0 }],
+        [{ "node": "Format Lead", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Lead": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] },
+    "Compile Results": { "main": [[{ "node": "Prepare Batch Write", "type": "main", "index": 0 }]] },
+    "Prepare Batch Write": { "main": [[{ "node": "Batch Append to Sheet", "type": "main", "index": 0 }]] },
+    "Batch Append to Sheet": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
