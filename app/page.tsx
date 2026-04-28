@@ -8,6 +8,12 @@ interface Lead {
   address: string;
   phone: string;
   website: string;
+  email: string;
+  key_person: string;
+  facebook: string;
+  instagram: string;
+  twitter: string;
+  description: string;
   business_status: string;
   opening_hours: string;
   price_level: string;
@@ -49,7 +55,8 @@ function extractSheetId(input: string): string {
 
 function exportCSV(leads: Lead[]) {
   const headers: (keyof Lead)[] = [
-    'place_id','name','address','phone','website','business_status',
+    'place_id','name','address','phone','website','email','key_person',
+    'facebook','instagram','twitter','description','business_status',
     'opening_hours','price_level','rating','user_ratings_total','types','found_at',
   ];
   const escape = (v: string) => `"${(v || '').replace(/"/g, '""')}"`;
@@ -127,13 +134,30 @@ function HoursCell({ hours }: { hours: string }) {
   );
 }
 
+function SocialLinks({ lead }: { lead: Lead }) {
+  const links = [
+    lead.facebook && { href: lead.facebook, label: 'FB' },
+    lead.instagram && { href: lead.instagram, label: 'IG' },
+    lead.twitter && { href: lead.twitter, label: 'X' },
+  ].filter(Boolean) as { href: string; label: string }[];
+  if (links.length === 0) return <span className="text-zinc-400">—</span>;
+  return (
+    <span className="flex gap-1.5">
+      {links.map(l => (
+        <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer"
+          className="text-xs font-medium text-blue-600 hover:underline">{l.label}</a>
+      ))}
+    </span>
+  );
+}
+
 function LeadsTable({ leads }: { leads: Lead[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-200 bg-zinc-50">
-            {['Name','Address','Phone','Website','Status','Rating','Price','Types','Hours'].map(h => (
+            {['Name','Address','Phone','Website','Email','Contact','Social','Description','Status','Rating','Price','Hours'].map(h => (
               <th key={h} className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -149,10 +173,21 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
                   ? <a href={lead.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate block max-w-[160px]">{lead.website.replace(/^https?:\/\//, '')}</a>
                   : <span className="text-zinc-400">—</span>}
               </td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                {lead.email
+                  ? <a href={`mailto:${lead.email}`} className="text-blue-600 hover:underline text-xs">{lead.email}</a>
+                  : <span className="text-zinc-400">—</span>}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap text-zinc-600 text-xs">{lead.key_person || <span className="text-zinc-400">—</span>}</td>
+              <td className="px-4 py-3 whitespace-nowrap"><SocialLinks lead={lead} /></td>
+              <td className="px-4 py-3 text-zinc-500 text-xs max-w-[220px]">
+                {lead.description
+                  ? <span title={lead.description} className="cursor-help line-clamp-2">{lead.description}</span>
+                  : <span className="text-zinc-400">—</span>}
+              </td>
               <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={lead.business_status} /></td>
               <td className="px-4 py-3 whitespace-nowrap"><RatingCell rating={lead.rating} total={lead.user_ratings_total} /></td>
               <td className="px-4 py-3 whitespace-nowrap"><PriceLevel level={lead.price_level} /></td>
-              <td className="px-4 py-3 text-zinc-600 max-w-[180px]">{lead.types || <span className="text-zinc-400">—</span>}</td>
               <td className="px-4 py-3 max-w-[200px]"><HoursCell hours={lead.opening_hours} /></td>
             </tr>
           ))}
@@ -273,7 +308,7 @@ export default function Home() {
   const filteredSearch  = searchResult ? applyFilters(searchResult.leads, filterRating, filterOperational, filterPriceLevels) : [];
   const filteredSheet   = allLeads    ? applyFilters(allLeads,           filterRating, filterOperational, filterPriceLevels) : [];
 
-  const searchDuration = maxResults === '60' ? '30–55 seconds' : maxResults === '40' ? '25–40 seconds' : '20–30 seconds';
+  const searchDuration = maxResults === '60' ? '3–5 minutes' : maxResults === '40' ? '2–3 minutes' : '1–2 minutes';
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();

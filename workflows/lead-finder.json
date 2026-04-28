@@ -177,6 +177,38 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "={{ $json.website }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 8000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "node-fetchwebsite",
+      "name": "Fetch Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2256, 144],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.results) staticData.results = [];\n\nconst res = $input.first().json;\nlet email = '', key_person = '', facebook = '', instagram = '', twitter = '', description = '';\n\nconst html = typeof res.body === 'string' ? res.body : '';\nif (html.length > 100) {\n  const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n    .filter(e => !/\\.(png|jpg|gif|svg|css|js)$/i.test(e) && !/\\d{4,}/.test(e));\n  email = emails[0] || '';\n\n  const fb = html.match(/https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?/])[\\w.%-]+/i);\n  if (fb) facebook = fb[0].split(/[\"'<>\\s]/)[0];\n\n  const ig = html.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+/i);\n  if (ig) instagram = ig[0].split(/[\"'<>\\s]/)[0];\n\n  const tw = html.match(/https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+/i);\n  if (tw) twitter = tw[0].split(/[\"'<>\\s]/)[0];\n\n  const desc = html.match(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']{10,})/i)\n            || html.match(/<meta[^>]+content=[\"']([^\"']{10,})[\"'][^>]+name=[\"']description/i);\n  if (desc) description = desc[1].trim().substring(0, 300);\n\n  const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^<]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n  if (person) key_person = person[1];\n}\n\nif (staticData.results.length > 0) {\n  const last = staticData.results[staticData.results.length - 1];\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook;\n  last.instagram = instagram;\n  last.twitter = twitter;\n  last.description = description;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
+      },
+      "id": "node-extractenrichment",
+      "name": "Extract & Merge Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 144]
+    },
+    {
+      "parameters": {
         "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst leads = staticData.results || [];\n\nstaticData.results = [];\nstaticData.newPlaces = [];\n\nreturn [{ json: { leads, count: leads.length } }];"
       },
       "id": "node-compileresults",
@@ -188,7 +220,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const leads = $input.first().json.leads || [];\nconst sheetId = $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID';\nconst columns = ['place_id', 'name', 'address', 'phone', 'website', 'business_status', 'opening_hours', 'price_level', 'rating', 'user_ratings_total', 'types', 'found_at'];\nconst values = leads.map(lead => columns.map(col => String(lead[col] != null ? lead[col] : '')));\nreturn [{ json: { values, sheet_id: sheetId } }];"
+        "jsCode": "const leads = $input.first().json.leads || [];\nconst sheetId = $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID';\nconst columns = ['place_id', 'name', 'address', 'phone', 'website', 'email', 'key_person', 'facebook', 'instagram', 'twitter', 'description', 'business_status', 'opening_hours', 'price_level', 'rating', 'user_ratings_total', 'types', 'found_at'];\nconst values = leads.map(lead => columns.map(col => String(lead[col] != null ? lead[col] : '')));\nreturn [{ json: { values, sheet_id: sheetId } }];"
       },
       "id": "node-preparebatch",
       "name": "Prepare Batch Write",
@@ -274,7 +306,9 @@
         [{ "node": "Format Lead", "type": "main", "index": 0 }]
       ]
     },
-    "Format Lead": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] },
+    "Format Lead": { "main": [[{ "node": "Fetch Website", "type": "main", "index": 0 }]] },
+    "Fetch Website": { "main": [[{ "node": "Extract & Merge Enrichment", "type": "main", "index": 0 }]] },
+    "Extract & Merge Enrichment": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] },
     "Compile Results": { "main": [[{ "node": "Prepare Batch Write", "type": "main", "index": 0 }]] },
     "Prepare Batch Write": { "main": [[{ "node": "Batch Append to Sheet", "type": "main", "index": 0 }]] },
     "Batch Append to Sheet": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
