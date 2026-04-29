@@ -12,7 +12,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [240, 432],
+      "position": [
+        240,
+        432
+      ],
       "webhookId": "205946c0-ea93-4e0b-8359-86f87b942155",
       "onError": "continueRegularOutput"
     },
@@ -23,8 +26,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-Goog-Api-Key", "value": "YOUR_GOOGLE_PLACES_API_KEY" },
-            { "name": "X-Goog-FieldMask", "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,nextPageToken" }
+            {
+              "name": "X-Goog-Api-Key",
+              "value": "YOUR_GOOGLE_PLACES_API_KEY"
+            },
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,places.reviews,nextPageToken"
+            }
           ]
         },
         "sendBody": true,
@@ -36,28 +45,42 @@
       "name": "Google Places Text Search",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [464, 432]
+      "position": [
+        464,
+        432
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.results = [];\n\nconst body = $('Webhook').first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + ' in ' + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p => ({\n  place_id: p.id,\n  name: p.displayName?.text || '',\n  address: p.formattedAddress || '',\n  phone: p.nationalPhoneNumber || '',\n  website: p.websiteUri || '',\n  business_status: p.businessStatus || '',\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n  rating: p.rating !== undefined ? String(p.rating) : '',\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n  types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : ''\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nstaticData.textQuery = textQuery;\nstaticData.newPlaces = places;\nstaticData.nextToken = nextToken;\nstaticData.maxResults = maxResults;\nstaticData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken && maxPages > 1,\n  pages_remaining: staticData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.results = [];\n\nconst body = $('Webhook').first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + ' in ' + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p => ({\n  place_id: p.id,\n  name: p.displayName?.text || '',\n  address: p.formattedAddress || '',\n  phone: p.nationalPhoneNumber || '',\n  website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n  facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  business_status: p.businessStatus || '',\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n  rating: p.rating !== undefined ? String(p.rating) : '',\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n  types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n  reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nstaticData.textQuery = textQuery;\nstaticData.newPlaces = places;\nstaticData.nextToken = nextToken;\nstaticData.maxResults = maxResults;\nstaticData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken && maxPages > 1,\n  pages_remaining: staticData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
       },
       "id": "node-processresults",
       "name": "Process Text Search Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [688, 432]
+      "position": [
+        688,
+        432
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
           "conditions": [
             {
               "id": "has-more-check",
               "leftValue": "={{ $json.has_more }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -68,15 +91,25 @@
       "name": "Has More Pages",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [912, 432]
+      "position": [
+        912,
+        432
+      ]
     },
     {
-      "parameters": { "resume": "timeInterval", "amount": 5, "unit": "seconds" },
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
       "id": "node-wait-pagetoken",
       "name": "Wait for Token",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [1024, 600],
+      "position": [
+        1024,
+        600
+      ],
       "webhookId": "b7e3f1a2-c4d5-6789-bcde-f01234567890"
     },
     {
@@ -86,8 +119,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-Goog-Api-Key", "value": "YOUR_GOOGLE_PLACES_API_KEY" },
-            { "name": "X-Goog-FieldMask", "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,nextPageToken" }
+            {
+              "name": "X-Goog-Api-Key",
+              "value": "YOUR_GOOGLE_PLACES_API_KEY"
+            },
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,places.reviews,nextPageToken"
+            }
           ]
         },
         "sendBody": true,
@@ -99,31 +138,53 @@
       "name": "Fetch Next Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [1248, 600]
+      "position": [
+        1248,
+        600
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst page = $input.first().json;\n\nif (page.places && page.places.length > 0) {\n  const newPlaces = page.places.map(p => ({\n    place_id: p.id,\n    name: p.displayName?.text || '',\n    address: p.formattedAddress || '',\n    phone: p.nationalPhoneNumber || '',\n    website: p.websiteUri || '',\n    business_status: p.businessStatus || '',\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n    rating: p.rating !== undefined ? String(p.rating) : '',\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n    types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : ''\n  }));\n  staticData.newPlaces = [...(staticData.newPlaces || []), ...newPlaces];\n  staticData.nextToken = page.nextPageToken || null;\n}\n\nstaticData.pagesRemaining = Math.max(0, (staticData.pagesRemaining || 1) - 1);\n\nif (staticData.newPlaces.length > staticData.maxResults) {\n  staticData.newPlaces = staticData.newPlaces.slice(0, staticData.maxResults);\n}\n\nconst hasMore = !!staticData.nextToken && staticData.pagesRemaining > 0;\n\nreturn [{ json: { has_more: hasMore, place_count: staticData.newPlaces.length, next_page_token: staticData.nextToken, text_query: staticData.textQuery } }];"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst page = $input.first().json;\n\nif (page.places && page.places.length > 0) {\n  const newPlaces = page.places.map(p => ({\n    place_id: p.id,\n    name: p.displayName?.text || '',\n    address: p.formattedAddress || '',\n    phone: p.nationalPhoneNumber || '',\n    website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n    facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    business_status: p.businessStatus || '',\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n    rating: p.rating !== undefined ? String(p.rating) : '',\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n    types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n    reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n  }));\n  staticData.newPlaces = [...(staticData.newPlaces || []), ...newPlaces];\n  staticData.nextToken = page.nextPageToken || null;\n}\n\nstaticData.pagesRemaining = Math.max(0, (staticData.pagesRemaining || 1) - 1);\n\nif (staticData.newPlaces.length > staticData.maxResults) {\n  staticData.newPlaces = staticData.newPlaces.slice(0, staticData.maxResults);\n}\n\nconst hasMore = !!staticData.nextToken && staticData.pagesRemaining > 0;\n\nreturn [{ json: { has_more: hasMore, place_count: staticData.newPlaces.length, next_page_token: staticData.nextToken, text_query: staticData.textQuery } }];"
       },
       "id": "node-accumulatepage",
       "name": "Accumulate Page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1472, 600]
+      "position": [
+        1472,
+        600
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "value": "={{ $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID' }}", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "Sheet1", "mode": "name" },
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID' }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
         "options": {}
       },
       "id": "node-readsheets",
       "name": "Read Existing Leads",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
-      "position": [1136, 432],
+      "position": [
+        1136,
+        432
+      ],
       "alwaysOutputData": true,
-      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets account" } }
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
@@ -133,18 +194,29 @@
       "name": "Deduplicate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 432]
+      "position": [
+        1360,
+        432
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
           "conditions": [
             {
               "id": "skip-check",
               "leftValue": "={{ $json.__skip === true }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -155,15 +227,23 @@
       "name": "Has New Leads",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1584, 432]
+      "position": [
+        1584,
+        432
+      ]
     },
     {
-      "parameters": { "options": {} },
+      "parameters": {
+        "options": {}
+      },
       "id": "node-splitbatches",
       "name": "Split In Batches",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [1808, 312]
+      "position": [
+        1808,
+        312
+      ]
     },
     {
       "parameters": {
@@ -173,7 +253,10 @@
       "name": "Format Lead",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2032, 144]
+      "position": [
+        2032,
+        144
+      ]
     },
     {
       "parameters": {
@@ -194,18 +277,24 @@
       "name": "Fetch Website",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [2256, 144],
+      "position": [
+        2256,
+        144
+      ],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.results) staticData.results = [];\n\nconst res = $input.first().json;\nlet email = '', key_person = '', facebook = '', instagram = '', twitter = '', description = '';\n\nconst html = typeof res.body === 'string' ? res.body : '';\nif (html.length > 100) {\n  const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n    .filter(e => !/\\.(png|jpg|gif|svg|css|js)$/i.test(e) && !/\\d{4,}/.test(e));\n  email = emails[0] || '';\n\n  const fb = html.match(/https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?/])[\\w.%-]+/i);\n  if (fb) facebook = fb[0].split(/[\"'<>\\s]/)[0];\n\n  const ig = html.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+/i);\n  if (ig) instagram = ig[0].split(/[\"'<>\\s]/)[0];\n\n  const tw = html.match(/https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+/i);\n  if (tw) twitter = tw[0].split(/[\"'<>\\s]/)[0];\n\n  const desc = html.match(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']{10,})/i)\n            || html.match(/<meta[^>]+content=[\"']([^\"']{10,})[\"'][^>]+name=[\"']description/i);\n  if (desc) description = desc[1].trim().substring(0, 300);\n\n  const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^<]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n  if (person) key_person = person[1];\n}\n\nif (staticData.results.length > 0) {\n  const last = staticData.results[staticData.results.length - 1];\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook;\n  last.instagram = instagram;\n  last.twitter = twitter;\n  last.description = description;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.results) staticData.results = [];\n\nconst res = $input.first().json;\nlet email = '', key_person = '', facebook = '', instagram = '', twitter = '', description = '';\n\nconst html = typeof res.body === 'string' ? res.body : '';\nif (html.length > 100) {\n  // 1. JSON-LD structured data (most reliable — what Google parses)\n  const ldBlocks = html.match(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi) || [];\n  for (const block of ldBlocks) {\n    const inner = block.replace(/<script[^>]*>|<\\/script>/gi, '').trim();\n    try {\n      const ld = JSON.parse(inner);\n      const items = Array.isArray(ld) ? ld : [ld];\n      for (const item of items) {\n        if (!email && item.email) email = item.email;\n        if (!description && item.description) description = String(item.description).trim().substring(0, 300);\n        if (item.sameAs) {\n          const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [item.sameAs];\n          for (const url of sameAs) {\n            if (!facebook && /facebook\\.com/i.test(url)) facebook = url;\n            if (!instagram && /instagram\\.com/i.test(url)) instagram = url;\n            if (!twitter && /(twitter|x)\\.com/i.test(url)) twitter = url;\n          }\n        }\n        if (!key_person) {\n          const candidate = item.founder || item.employee || item.author;\n          if (candidate) {\n            const name = typeof candidate === 'string' ? candidate\n              : (Array.isArray(candidate) ? candidate[0]?.name : candidate.name);\n            if (name && typeof name === 'string' && /^[A-Z]/.test(name)) key_person = name;\n          }\n        }\n      }\n    } catch(e) {}\n  }\n\n  // 2. mailto: href links (more reliable than body-text regex)\n  if (!email) {\n    const mailto = html.match(/href=[\"']mailto:([^\"'?\\s]+)/i);\n    if (mailto) email = mailto[1];\n  }\n  // 3. Regex email fallback\n  if (!email) {\n    const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n      .filter(e => !/\\.(png|jpg|gif|svg|css|js)$/i.test(e) && !/\\d{4,}/.test(e));\n    email = emails[0] || '';\n  }\n\n  // 4. Social links from href= attributes (far more reliable than body-text scan)\n  if (!facebook) {\n    const fb = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?\\/])[\\w.%-]+)/i);\n    if (fb) facebook = fb[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!instagram) {\n    const ig = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+)/i);\n    if (ig) instagram = ig[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!twitter) {\n    const tw = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+)/i);\n    if (tw) twitter = tw[1].split(/[\"'<>\\s]/)[0];\n  }\n\n  // 5. Meta description fallback\n  if (!description) {\n    const desc = html.match(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']{10,})/i)\n              || html.match(/<meta[^>]+content=[\"']([^\"']{10,})[\"'][^>]+name=[\"']description/i);\n    if (desc) description = desc[1].trim().substring(0, 300);\n  }\n\n  // 6. Key person from visible text patterns\n  if (!key_person) {\n    const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^<]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n    if (person) key_person = person[1];\n  }\n}\n\nif (staticData.results.length > 0) {\n  const last = staticData.results[staticData.results.length - 1];\n  if (!key_person) {\n    const reviews = Array.isArray(last.reviews) ? last.reviews : [];\n    for (const review of reviews) {\n      const lower = review.toLowerCase();\n      const triggers = ['owner ', 'founded by ', 'owned by ', 'run by ', 'managed by '];\n      for (const trigger of triggers) {\n        const idx = lower.indexOf(trigger);\n        if (idx !== -1) {\n          const after = review.slice(idx + trigger.length).trim();\n          const nm = after.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);\n          if (nm) { key_person = nm[1]; break; }\n        }\n      }\n      if (key_person) break;\n    }\n  }\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook || last.facebook || '';\n  last.instagram = instagram || last.instagram || '';\n  last.twitter = twitter || last.twitter || '';\n  last.description = description;\n  delete last.reviews;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
       },
       "id": "node-extractenrichment",
       "name": "Extract & Merge Enrichment",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2480, 144]
+      "position": [
+        2480,
+        144
+      ]
     },
     {
       "parameters": {
@@ -215,7 +304,10 @@
       "name": "Compile Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2032, 336],
+      "position": [
+        2032,
+        336
+      ],
       "alwaysOutputData": true
     },
     {
@@ -226,7 +318,10 @@
       "name": "Prepare Batch Write",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2256, 336]
+      "position": [
+        2256,
+        336
+      ]
     },
     {
       "parameters": {
@@ -237,8 +332,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "valueInputOption", "value": "USER_ENTERED" },
-            { "name": "insertDataOption", "value": "INSERT_ROWS" }
+            {
+              "name": "valueInputOption",
+              "value": "USER_ENTERED"
+            },
+            {
+              "name": "insertDataOption",
+              "value": "INSERT_ROWS"
+            }
           ]
         },
         "sendBody": true,
@@ -250,9 +351,17 @@
       "name": "Batch Append to Sheet",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [2480, 336],
+      "position": [
+        2480,
+        336
+      ],
       "onError": "continueRegularOutput",
-      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets account" } }
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
@@ -264,7 +373,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
-      "position": [2704, 336]
+      "position": [
+        2704,
+        336
+      ]
     },
     {
       "parameters": {
@@ -276,42 +388,221 @@
       "name": "Respond (no new leads)",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
-      "position": [1808, 504]
+      "position": [
+        1808,
+        504
+      ]
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Google Places Text Search", "type": "main", "index": 0 }]] },
-    "Google Places Text Search": { "main": [[{ "node": "Process Text Search Results", "type": "main", "index": 0 }]] },
-    "Process Text Search Results": { "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]] },
-    "Has More Pages": {
+    "Webhook": {
       "main": [
-        [{ "node": "Wait for Token", "type": "main", "index": 0 }],
-        [{ "node": "Read Existing Leads", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Google Places Text Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Wait for Token": { "main": [[{ "node": "Fetch Next Page", "type": "main", "index": 0 }]] },
-    "Fetch Next Page": { "main": [[{ "node": "Accumulate Page", "type": "main", "index": 0 }]] },
-    "Accumulate Page": { "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]] },
-    "Read Existing Leads": { "main": [[{ "node": "Deduplicate", "type": "main", "index": 0 }]] },
-    "Deduplicate": { "main": [[{ "node": "Has New Leads", "type": "main", "index": 0 }]] },
+    "Google Places Text Search": {
+      "main": [
+        [
+          {
+            "node": "Process Text Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Text Search Results": {
+      "main": [
+        [
+          {
+            "node": "Has More Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has More Pages": {
+      "main": [
+        [
+          {
+            "node": "Wait for Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Existing Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Token": {
+      "main": [
+        [
+          {
+            "node": "Fetch Next Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Next Page": {
+      "main": [
+        [
+          {
+            "node": "Accumulate Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate Page": {
+      "main": [
+        [
+          {
+            "node": "Has More Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing Leads": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Has New Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Has New Leads": {
       "main": [
-        [{ "node": "Respond (no new leads)", "type": "main", "index": 0 }],
-        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Respond (no new leads)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Split In Batches": {
       "main": [
-        [{ "node": "Compile Results", "type": "main", "index": 0 }],
-        [{ "node": "Format Lead", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Compile Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Format Lead": { "main": [[{ "node": "Fetch Website", "type": "main", "index": 0 }]] },
-    "Fetch Website": { "main": [[{ "node": "Extract & Merge Enrichment", "type": "main", "index": 0 }]] },
-    "Extract & Merge Enrichment": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] },
-    "Compile Results": { "main": [[{ "node": "Prepare Batch Write", "type": "main", "index": 0 }]] },
-    "Prepare Batch Write": { "main": [[{ "node": "Batch Append to Sheet", "type": "main", "index": 0 }]] },
-    "Batch Append to Sheet": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+    "Format Lead": {
+      "main": [
+        [
+          {
+            "node": "Fetch Website",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Website": {
+      "main": [
+        [
+          {
+            "node": "Extract & Merge Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Merge Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Results": {
+      "main": [
+        [
+          {
+            "node": "Prepare Batch Write",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Batch Write": {
+      "main": [
+        [
+          {
+            "node": "Batch Append to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Append to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
