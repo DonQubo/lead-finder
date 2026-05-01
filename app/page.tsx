@@ -21,6 +21,12 @@ interface Lead {
   user_ratings_total: string;
   types: string;
   found_at: string;
+  person_name: string;
+  person_title: string;
+  person_email: string;
+  person_linkedin: string;
+  person_instagram: string;
+  person_twitter: string;
 }
 
 interface SavedSearch {
@@ -58,8 +64,13 @@ function exportCSV(leads: Lead[]) {
     'place_id','name','address','phone','website','email','key_person',
     'facebook','instagram','twitter','description','business_status',
     'opening_hours','price_level','rating','user_ratings_total','types','found_at',
+    'person_name','person_title','person_email','person_linkedin','person_instagram','person_twitter',
   ];
-  const escape = (v: string) => `"${(v || '').replace(/"/g, '""')}"`;
+  const escape = (v: string) => {
+    const s = (v || '');
+    const safe = /^[=+\-@\t\r]/.test(s) ? '\t' + s : s;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
   const rows = leads.map(l => headers.map(h => escape(l[h])).join(','));
   const csv = [headers.join(','), ...rows].join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -151,13 +162,54 @@ function SocialLinks({ lead }: { lead: Lead }) {
   );
 }
 
+function validSocialUrl(val: string, ...domains: string[]): boolean {
+  if (!val || val === 'N/A') return false;
+  try {
+    const { hostname } = new URL(val);
+    return domains.some(d => hostname === d || hostname.endsWith('.' + d));
+  } catch { return false; }
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function DecisionMakerCell({ lead }: { lead: Lead }) {
+  const hasData = lead.person_name && lead.person_name !== 'N/A' && lead.person_name !== '';
+  if (!hasData) return <span className="text-zinc-400 text-xs">—</span>;
+
+  const validEmail = EMAIL_RE.test(lead.person_email || '');
+  const liOk = validSocialUrl(lead.person_linkedin, 'linkedin.com');
+  const igOk = validSocialUrl(lead.person_instagram, 'instagram.com');
+  const twOk = validSocialUrl(lead.person_twitter, 'twitter.com', 'x.com');
+
+  return (
+    <div className="text-xs space-y-0.5 min-w-[160px]">
+      <div className="font-medium text-zinc-700">{lead.person_name}</div>
+      {lead.person_title && lead.person_title !== 'N/A' && (
+        <div className="text-zinc-500">{lead.person_title}</div>
+      )}
+      {validEmail && (
+        <a href={`mailto:${lead.person_email}`} className="text-blue-600 hover:underline block truncate max-w-[200px]">
+          {lead.person_email}
+        </a>
+      )}
+      {(liOk || igOk || twOk) && (
+        <div className="flex gap-2 pt-0.5">
+          {liOk && <a href={lead.person_linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline font-medium">LI</a>}
+          {igOk && <a href={lead.person_instagram} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline font-medium">IG</a>}
+          {twOk && <a href={lead.person_twitter} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline font-medium">X</a>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeadsTable({ leads }: { leads: Lead[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-200 bg-zinc-50">
-            {['Name','Address','Phone','Website','Email','Contact','Social','Description','Status','Rating','Price','Hours'].map(h => (
+            {['Name','Address','Phone','Website','Email','Contact','Social','Description','Status','Rating','Price','Hours','Decision Maker'].map(h => (
               <th key={h} className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -189,6 +241,7 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
               <td className="px-4 py-3 whitespace-nowrap"><RatingCell rating={lead.rating} total={lead.user_ratings_total} /></td>
               <td className="px-4 py-3 whitespace-nowrap"><PriceLevel level={lead.price_level} /></td>
               <td className="px-4 py-3 max-w-[200px]"><HoursCell hours={lead.opening_hours} /></td>
+              <td className="px-4 py-3"><DecisionMakerCell lead={lead} /></td>
             </tr>
           ))}
         </tbody>
@@ -289,6 +342,8 @@ export default function Home() {
   const [leadsError, setLeadsError]     = useState<string | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing]         = useState(false);
+  const [enriching, setEnriching]       = useState(false);
+  const [enrichMsg, setEnrichMsg]       = useState('');
 
   // Filters (shared between tabs)
   const [filterRating, setFilterRating]           = useState(0);
@@ -583,13 +638,44 @@ export default function Home() {
                 <h2 className="text-base font-semibold text-zinc-900">
                   Existing leads {allLeads !== null && <span className="text-zinc-400 font-normal text-sm">({allLeads.length})</span>}
                 </h2>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   {allLeads && allLeads.length > 0 && (
                     <button onClick={() => exportCSV(filteredSheet)}
                       className="text-sm text-zinc-600 hover:text-zinc-900 underline underline-offset-2">
                       Export CSV
                     </button>
                   )}
+                  <button
+                    onClick={async () => {
+                      setEnriching(true);
+                      setEnrichMsg('');
+                      try {
+                        const res = await fetch('/api/enrich-dm', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ only_missing: true }),
+                        });
+                        const data = await res.json();
+                        if (res.status === 202) {
+                          setEnrichMsg(`Enriching ${data.total ?? '?'} leads in background. Refresh table in a few minutes.`);
+                        } else if (res.status === 409) {
+                          setEnrichMsg('Enrichment is already running. Check back in a few minutes.');
+                        } else if (res.status === 200 && data.status === 'ok') {
+                          setEnrichMsg('Nothing to enrich — all leads already have decision maker data.');
+                        } else {
+                          setEnrichMsg(`Error: ${data.error}`);
+                        }
+                      } catch {
+                        setEnrichMsg('Failed to start enrichment.');
+                      } finally {
+                        setEnriching(false);
+                      }
+                    }}
+                    disabled={enriching || (allLeads !== null && allLeads.length === 0)}
+                    className="px-3 py-1.5 text-sm rounded-md bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    {enriching ? 'Starting…' : 'Find Decision Makers'}
+                  </button>
                   <button onClick={handleLoadLeads} disabled={loadingLeads}
                     className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 transition-colors">
                     {loadingLeads && (
@@ -602,6 +688,8 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              {enrichMsg && <p className="mb-3 text-sm text-zinc-500">{enrichMsg}</p>}
+              <p className="mb-3 text-xs text-zinc-400">AI enrichment powered by Groq · <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-zinc-600">View usage</a></p>
 
               {leadsError && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{leadsError}</div>

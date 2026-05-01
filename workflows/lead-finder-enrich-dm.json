@@ -1,0 +1,373 @@
+{
+  "id": "RpiHH5Jbhc0dK6Th",
+  "name": "Lead Finder - Enrich DM",
+  "nodes": [
+    {
+      "id": "enrich-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 304],
+      "webhookId": "e1a2b3c4-d5f6-7890-abcd-ef1234567890",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-finder-enrich-dm",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "LMA3uN6Afx8fKHA4",
+          "name": "Enrich DM Secret"
+        }
+      }
+    },
+    {
+      "id": "enrich-readsheet",
+      "name": "Read Sheet Rows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [464, 304],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://sheets.googleapis.com/v4/spreadsheets/' + $env.LEAD_FINDER_SHEET_ID + '/values/Sheet1' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IOYcAf4cVdbQtjgP",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "enrich-parserows",
+      "name": "Parse Rows To Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 304],
+      "parameters": {
+        "jsCode": "const globalStore = $getWorkflowStaticData('global');\nconst STALE_MS = 45 * 60 * 1000;\nconst lock = globalStore._enriching;\nif (lock && (Date.now() - lock.startedAt) < STALE_MS) {\n  return [{ json: { already_running: true, total: 0, leads: [] } }];\n}\n\nconst raw = $input.first().json;\nconst [headers, ...rows] = raw.values || [[]];\nconst onlyMissing = $('Webhook').first().json.body?.only_missing !== false;\nconst leads = rows\n  .map((row, i) => ({\n    ...Object.fromEntries(headers.map((h, j) => [h, row[j] || ''])),\n    _rowNumber: i + 2\n  }))\n  .filter(lead => !onlyMissing || !lead.person_name || lead.person_name === '');\n\nif (leads.length === 0) {\n  return [{ json: { already_running: false, total: 0, leads: [] } }];\n}\n\nglobalStore._enriching = { executionId: $execution.id, startedAt: Date.now() };\nreturn [{ json: { already_running: false, total: leads.length, leads } }];"
+      }
+    },
+    {
+      "id": "enrich-if-running",
+      "name": "IF Already Running",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [912, 304],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "running-check",
+              "leftValue": "={{ $json.already_running === true }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-respond-running",
+      "name": "Respond (already running)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1120, 160],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'in_progress', message: 'Enrichment already running' }) }}",
+        "options": { "responseCode": 409 }
+      }
+    },
+    {
+      "id": "enrich-if-total",
+      "name": "IF Total > 0",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 448],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "total-check",
+              "leftValue": "={{ $json.total > 0 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-respond-started",
+      "name": "Respond (started)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1344, 304],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'started', total: $json.total }) }}",
+        "options": { "responseCode": 202 }
+      }
+    },
+    {
+      "id": "enrich-respond-nothing",
+      "name": "Respond (nothing to enrich)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1344, 592],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', message: 'Nothing to enrich', total: 0 }) }}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "enrich-splitout",
+      "name": "Split Out Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1568, 304],
+      "parameters": {
+        "jsCode": "return $input.first().json.leads.map(lead => ({ json: lead }));"
+      }
+    },
+    {
+      "id": "enrich-splitbatches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1792, 304],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "enrich-wait",
+      "name": "Wait 7s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2000, 304],
+      "webhookId": "f2b3c4d5-e6a7-8901-bcde-f23456789012",
+      "parameters": { "resume": "timeInterval", "amount": 7, "unit": "seconds" }
+    },
+    {
+      "id": "enrich-cleanup",
+      "name": "Cleanup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 480],
+      "parameters": {
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\ndelete store[execId];\ndelete store._enriching;\nreturn [];"
+      }
+    },
+    {
+      "id": "enrich-buildtavily",
+      "name": "Build Tavily Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2224, 304],
+      "parameters": {
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst lead = $input.first().json;\nstore[execId].pendingLead = { _rowNumber: lead._rowNumber };\nstore[execId].leadInfo = { name: lead.name || '', address: lead.address || '', phone: lead.phone || '', website: lead.website || '' };\nconst location = (lead.address || '').split(',').slice(-2).join(',').trim();\nconst websitePart = lead.website ? ' ' + lead.website.replace(/^https?:\\/\\//, '').replace(/\\/$/, '') : '';\nconst query = (lead.name || '') + ' ' + location + websitePart + ' owner CEO director email LinkedIn';\nreturn [{ json: { tavily_body: { api_key: $env.TAVILY_API_KEY, query: query.trim(), search_depth: 'advanced', max_results: 5, include_answer: true, include_raw_content: false } }}];"
+      }
+    },
+    {
+      "id": "enrich-calltavily",
+      "name": "Call Tavily",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2448, 304],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tavily_body) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-stashbroad",
+      "name": "Stash Broad Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 480],
+      "parameters": {
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst leadInfo = store[execId]?.leadInfo || {};\nstore[execId].broadResults = $input.first().json;\nlet secondQuery;\nif (leadInfo.website) {\n  const domain = leadInfo.website.replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '');\n  secondQuery = 'site:' + domain + ' owner contact about team';\n} else {\n  const location = (leadInfo.address || '').split(',').slice(-2).join(',').trim();\n  secondQuery = '\"' + (leadInfo.name || '') + '\" ' + location + ' owner founder director site:linkedin.com OR site:facebook.com';\n}\nreturn [{ json: { tavily_site_body: { api_key: $env.TAVILY_API_KEY, query: secondQuery.trim(), search_depth: 'advanced', max_results: 5, include_answer: true, include_raw_content: false }}}];"
+      }
+    },
+    {
+      "id": "enrich-calltavily2",
+      "name": "Call Tavily Site",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2880, 480],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tavily_site_body) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-buildllmbody",
+      "name": "Build LLM Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2672, 304],
+      "parameters": {
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst leadInfo = store[execId]?.leadInfo || {};\nconst broadResult = store[execId]?.broadResults || {};\nconst siteResult = $input.first().json;\nfunction extractContext(result) {\n  const answer = result.answer || '';\n  const results = (result.results || []).slice(0, 5).map(r => r.title + '\\n' + r.url + '\\n' + (r.content || '')).join('\\n---\\n');\n  return [answer, results].filter(Boolean).join('\\n\\n');\n}\nconst broadContext = extractContext(broadResult);\nconst siteContext = extractContext(siteResult);\nconst contextBlock = [broadContext, siteContext ? '=== Targeted Search ===\\n' + siteContext : ''].filter(Boolean).join('\\n\\n');\nconst prompt = 'Business name: ' + (leadInfo.name || 'N/A') + '\\nAddress: ' + (leadInfo.address || 'N/A') + '\\nPhone: ' + (leadInfo.phone || 'N/A') + '\\nWebsite: ' + (leadInfo.website || 'N/A') + '\\n\\nWeb search results:\\n' + (contextBlock || 'No results') + '\\n\\nYou are an expert researcher. Using ONLY the search results above, extract the decision maker (owner, CEO, Director) for this business. Do NOT guess. Return N/A for any field not clearly supported by the results.\\n\\nRespond ONLY in this exact format:\\nPERSON_NAME: [full name or N/A]\\nPERSON_TITLE: [job title or N/A]\\nPERSON_EMAIL: [email or N/A]\\nPERSON_LINKEDIN: [URL or N/A]\\nPERSON_INSTAGRAM: [URL or N/A]\\nPERSON_TWITTER: [URL or N/A]';\nreturn [{ json: { llm_body: { model: 'llama-3.3-70b-versatile', max_tokens: 512, temperature: 0.1, messages: [{ role: 'user', content: prompt }] }}}];"
+      }
+    },
+    {
+      "id": "enrich-callllm",
+      "name": "Call LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2880, 304],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.llm_body) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-parsedm",
+      "name": "Parse DM Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3104, 304],
+      "parameters": {
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst pendingLead = store[execId]?.pendingLead || {};\nif (store[execId]) delete store[execId].pendingLead;\n\nconst response = $input.first().json;\nconst choices = response?.choices;\nconst text = choices?.[0]?.message?.content?.trim() || '';\n\nif (response?.error || !choices || !Array.isArray(choices) || choices.length === 0 || !text) {\n  return [{ json: { ...pendingLead, _should_update: false } }];\n}\n\nfunction extract(label) {\n  const m = text.match(new RegExp(label + ':\\\\s*(.+)', 'i'));\n  if (!m) return 'N/A';\n  const v = m[1].trim();\n  return /^n\\/a$/i.test(v) || !v ? 'N/A' : v.substring(0, 500);\n}\n\nreturn [{ json: {\n  ...pendingLead,\n  person_name:      extract('PERSON_NAME'),\n  person_title:     extract('PERSON_TITLE'),\n  person_email:     extract('PERSON_EMAIL'),\n  person_linkedin:  extract('PERSON_LINKEDIN'),\n  person_instagram: extract('PERSON_INSTAGRAM'),\n  person_twitter:   extract('PERSON_TWITTER'),\n  _should_update: true\n}}];"
+      }
+    },
+    {
+      "id": "enrich-if-update",
+      "name": "IF Should Update",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3328, 304],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "update-check",
+              "leftValue": "={{ $json._should_update === true }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-updaterow",
+      "name": "Update Sheet Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [3552, 160],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'https://sheets.googleapis.com/v4/spreadsheets/' + $env.LEAD_FINDER_SHEET_ID + '/values/Sheet1!S' + $json._rowNumber + ':X' + $json._rowNumber }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{ "name": "valueInputOption", "value": "RAW" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [[$json.person_name, $json.person_title, $json.person_email, $json.person_linkedin, $json.person_instagram, $json.person_twitter]] }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IOYcAf4cVdbQtjgP",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Read Sheet Rows", "type": "main", "index": 0 }]] },
+    "Read Sheet Rows": { "main": [[{ "node": "Parse Rows To Job", "type": "main", "index": 0 }]] },
+    "Parse Rows To Job": { "main": [[{ "node": "IF Already Running", "type": "main", "index": 0 }]] },
+    "IF Already Running": {
+      "main": [
+        [{ "node": "Respond (already running)", "type": "main", "index": 0 }],
+        [{ "node": "IF Total > 0", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Total > 0": {
+      "main": [
+        [{ "node": "Respond (started)", "type": "main", "index": 0 }],
+        [{ "node": "Respond (nothing to enrich)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Respond (started)": { "main": [[{ "node": "Split Out Leads", "type": "main", "index": 0 }]] },
+    "Split Out Leads": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] },
+    "Split In Batches": {
+      "main": [
+        [{ "node": "Cleanup", "type": "main", "index": 0 }],
+        [{ "node": "Wait 7s", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait 7s": { "main": [[{ "node": "Build Tavily Query", "type": "main", "index": 0 }]] },
+    "Build Tavily Query": { "main": [[{ "node": "Call Tavily", "type": "main", "index": 0 }]] },
+    "Call Tavily": { "main": [[{ "node": "Stash Broad Results", "type": "main", "index": 0 }]] },
+    "Stash Broad Results": { "main": [[{ "node": "Call Tavily Site", "type": "main", "index": 0 }]] },
+    "Call Tavily Site": { "main": [[{ "node": "Build LLM Body", "type": "main", "index": 0 }]] },
+    "Build LLM Body": { "main": [[{ "node": "Call LLM", "type": "main", "index": 0 }]] },
+    "Call LLM": { "main": [[{ "node": "Parse DM Response", "type": "main", "index": 0 }]] },
+    "Parse DM Response": { "main": [[{ "node": "IF Should Update", "type": "main", "index": 0 }]] },
+    "IF Should Update": {
+      "main": [
+        [{ "node": "Update Sheet Row", "type": "main", "index": 0 }],
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Sheet Row": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

@@ -1,3 +1,44 @@
+Session Summary
+What we did
+Iteratively refined the plan for the Decision Maker Enrichment feature (Lead Finder - Enrich DM) across 5 revision cycles. The final plan is saved at:
+C:\Users\Don Qubo\.claude\plans\add-searching-for-person-serialized-parasol.md
+
+Plan is ready to implement
+New n8n workflow: Lead Finder - Enrich DM (webhook path: lead-finder-enrich-dm)
+
+Reads sheet, filters leads missing DM data, responds immediately with count, enriches in background via Gemini 2.5 Flash + Google Search Grounding
+7s wait between calls (free tier: 10 RPM / 250 RPD ≈ 4 full 60-lead runs/day)
+Job lock: { executionId, startedAt } with 45-min stale timeout; skipped entirely when total === 0
+Modified files:
+
+lead-finder/workflows/lead-finder.json — centralize sheet ID to $env.LEAD_FINDER_SHEET_ID, extend columns to 24
+lead-finder/app/page.tsx — 6 new Lead fields, DecisionMakerCell component, "Find Decision Makers" button
+New files:
+
+lead-finder/workflows/lead-finder-enrich-dm.json (built via n8n MCP)
+lead-finder/app/api/enrich-dm/route.ts
+Manual setup required before implementation
+Add 6 column headers (S–X) to Google Sheet row 1
+Add GEMINI_API_KEY, LEAD_FINDER_SHEET_ID, ENRICH_DM_SECRET to n8n env vars and .env.local
+Create "Enrich DM Secret" Header Auth credential in n8n
+
+
+
+Session summary saved to memory. Here's what was captured:
+
+This session finished the work started in the previous context:
+
+Webhook conflict resolved — two separate active workflows (Lead Finder - Read, Lead Finder - Clear) were owning the lead-finder-read and lead-finder-clear paths, blocking every update to the main workflow. Fixed by removing those 7 nodes from the main workflow entirely.
+
+All 4 security fixes shipped to the live n8n workflow (fwPorWv9MATm4gPq):
+
+Execution-scoped state (concurrent search safety)
+Read/Clear served by dedicated workflows (no path conflict)
+502 error response when sheet append fails
+RAW value input to prevent formula injection
+Workflow JSON exported to lead-finder/workflows/lead-finder.json — clean 20-node export, runtime state stripped.
+
+
 Session Summary — 2026-04-29
 
 This was a short continuation session after context compaction.

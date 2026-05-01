@@ -1,4 +1,5 @@
 {
+  "id": "fwPorWv9MATm4gPq",
   "name": "Lead Finder",
   "nodes": [
     {
@@ -14,7 +15,7 @@
       "typeVersion": 2.1,
       "position": [
         240,
-        432
+        624
       ],
       "webhookId": "205946c0-ea93-4e0b-8359-86f87b942155",
       "onError": "continueRegularOutput"
@@ -28,7 +29,7 @@
           "parameters": [
             {
               "name": "X-Goog-Api-Key",
-              "value": "YOUR_GOOGLE_PLACES_API_KEY"
+              "value": "AIzaSyCOeXdsmlQWdxnyAig7-qjl298If8Ggfy0"
             },
             {
               "name": "X-Goog-FieldMask",
@@ -47,12 +48,12 @@
       "typeVersion": 4.4,
       "position": [
         464,
-        432
+        624
       ]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.results = [];\n\nconst body = $('Webhook').first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + ' in ' + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p => ({\n  place_id: p.id,\n  name: p.displayName?.text || '',\n  address: p.formattedAddress || '',\n  phone: p.nationalPhoneNumber || '',\n  website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n  facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  business_status: p.businessStatus || '',\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n  rating: p.rating !== undefined ? String(p.rating) : '',\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n  types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n  reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nstaticData.textQuery = textQuery;\nstaticData.newPlaces = places;\nstaticData.nextToken = nextToken;\nstaticData.maxResults = maxResults;\nstaticData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken && maxPages > 1,\n  pages_remaining: staticData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst myData = store[execId];\nmyData.results = [];\n\nconst body = $('Webhook').first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + ' in ' + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p => ({\n  place_id: p.id,\n  name: p.displayName?.text || '',\n  address: p.formattedAddress || '',\n  phone: p.nationalPhoneNumber || '',\n  website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n  facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  business_status: p.businessStatus || '',\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n  rating: p.rating !== undefined ? String(p.rating) : '',\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n  types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n  reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nmyData.textQuery = textQuery;\nmyData.newPlaces = places;\nmyData.nextToken = nextToken;\nmyData.maxResults = maxResults;\nmyData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken && maxPages > 1,\n  pages_remaining: myData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
       },
       "id": "node-processresults",
       "name": "Process Text Search Results",
@@ -60,7 +61,7 @@
       "typeVersion": 2,
       "position": [
         688,
-        432
+        624
       ]
     },
     {
@@ -93,22 +94,18 @@
       "typeVersion": 2,
       "position": [
         912,
-        432
+        624
       ]
     },
     {
-      "parameters": {
-        "resume": "timeInterval",
-        "amount": 5,
-        "unit": "seconds"
-      },
+      "parameters": {},
       "id": "node-wait-pagetoken",
       "name": "Wait for Token",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        1024,
-        600
+        1136,
+        552
       ],
       "webhookId": "b7e3f1a2-c4d5-6789-bcde-f01234567890"
     },
@@ -121,7 +118,7 @@
           "parameters": [
             {
               "name": "X-Goog-Api-Key",
-              "value": "YOUR_GOOGLE_PLACES_API_KEY"
+              "value": "AIzaSyCOeXdsmlQWdxnyAig7-qjl298If8Ggfy0"
             },
             {
               "name": "X-Goog-FieldMask",
@@ -139,28 +136,28 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1248,
-        600
+        1360,
+        552
       ]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst page = $input.first().json;\n\nif (page.places && page.places.length > 0) {\n  const newPlaces = page.places.map(p => ({\n    place_id: p.id,\n    name: p.displayName?.text || '',\n    address: p.formattedAddress || '',\n    phone: p.nationalPhoneNumber || '',\n    website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n    facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    business_status: p.businessStatus || '',\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n    rating: p.rating !== undefined ? String(p.rating) : '',\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n    types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n    reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n  }));\n  staticData.newPlaces = [...(staticData.newPlaces || []), ...newPlaces];\n  staticData.nextToken = page.nextPageToken || null;\n}\n\nstaticData.pagesRemaining = Math.max(0, (staticData.pagesRemaining || 1) - 1);\n\nif (staticData.newPlaces.length > staticData.maxResults) {\n  staticData.newPlaces = staticData.newPlaces.slice(0, staticData.maxResults);\n}\n\nconst hasMore = !!staticData.nextToken && staticData.pagesRemaining > 0;\n\nreturn [{ json: { has_more: hasMore, place_count: staticData.newPlaces.length, next_page_token: staticData.nextToken, text_query: staticData.textQuery } }];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\n\nconst page = $input.first().json;\n\nif (page.places && page.places.length > 0) {\n  const newPlaces = page.places.map(p => ({\n    place_id: p.id,\n    name: p.displayName?.text || '',\n    address: p.formattedAddress || '',\n    phone: p.nationalPhoneNumber || '',\n    website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n    facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    business_status: p.businessStatus || '',\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n    rating: p.rating !== undefined ? String(p.rating) : '',\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n    types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n    reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n  }));\n  myData.newPlaces = [...(myData.newPlaces || []), ...newPlaces];\n  myData.nextToken = page.nextPageToken || null;\n}\n\nmyData.pagesRemaining = Math.max(0, (myData.pagesRemaining || 1) - 1);\n\nif (myData.newPlaces.length > myData.maxResults) {\n  myData.newPlaces = myData.newPlaces.slice(0, myData.maxResults);\n}\n\nconst hasMore = !!myData.nextToken && myData.pagesRemaining > 0;\n\nreturn [{ json: { has_more: hasMore, place_count: myData.newPlaces.length, next_page_token: myData.nextToken, text_query: myData.textQuery } }];"
       },
       "id": "node-accumulatepage",
       "name": "Accumulate Page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1472,
-        600
+        1584,
+        696
       ]
     },
     {
       "parameters": {
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID' }}",
+          "value": "={{ $env.LEAD_FINDER_SHEET_ID }}",
           "mode": "id"
         },
         "sheetName": {
@@ -176,19 +173,19 @@
       "typeVersion": 4.7,
       "position": [
         1136,
-        432
+        360
       ],
       "alwaysOutputData": true,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "YOUR_CREDENTIAL_ID",
+          "id": "IOYcAf4cVdbQtjgP",
           "name": "Google Sheets account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst newPlaces = staticData.newPlaces || [];\n\nconst existingIds = new Set(\n  $input.all()\n    .map(item => item.json.place_id)\n    .filter(Boolean)\n);\n\nconst toProcess = newPlaces.filter(p => !existingIds.has(p.place_id));\n\nif (toProcess.length === 0) {\n  return [{ json: { __skip: true } }];\n}\n\nreturn toProcess.map(p => ({ json: p }));"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nconst newPlaces = myData.newPlaces || [];\n\nconst existingIds = new Set(\n  $input.all()\n    .map(item => item.json.place_id)\n    .filter(Boolean)\n);\n\nconst toProcess = newPlaces.filter(p => !existingIds.has(p.place_id));\n\nif (toProcess.length === 0) {\n  return [{ json: { __skip: true } }];\n}\n\nreturn toProcess.map(p => ({ json: p }));"
       },
       "id": "node-deduplicate",
       "name": "Deduplicate",
@@ -196,7 +193,7 @@
       "typeVersion": 2,
       "position": [
         1360,
-        432
+        360
       ]
     },
     {
@@ -229,7 +226,7 @@
       "typeVersion": 2,
       "position": [
         1584,
-        432
+        360
       ]
     },
     {
@@ -242,12 +239,12 @@
       "typeVersion": 3,
       "position": [
         1808,
-        312
+        240
       ]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.results) staticData.results = [];\n\nconst lead = { ...$input.first().json, found_at: new Date().toISOString() };\n\nstaticData.results.push(lead);\nreturn [{ json: lead }];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nif (!myData.results) myData.results = [];\n\nconst lead = { ...$input.first().json, found_at: new Date().toISOString() };\n\nmyData.results.push(lead);\nreturn [{ json: lead }];"
       },
       "id": "node-formatlead",
       "name": "Format Lead",
@@ -260,17 +257,16 @@
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "={{ $json.website }}",
         "options": {
+          "allowUnauthorizedCerts": true,
           "response": {
             "response": {
               "fullResponse": true,
               "responseFormat": "text"
             }
           },
-          "timeout": 8000,
-          "allowUnauthorizedCerts": true
+          "timeout": 8000
         }
       },
       "id": "node-fetchwebsite",
@@ -285,7 +281,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.results) staticData.results = [];\n\nconst res = $input.first().json;\nlet email = '', key_person = '', facebook = '', instagram = '', twitter = '', description = '';\n\nconst html = typeof res.body === 'string' ? res.body : '';\nif (html.length > 100) {\n  // 1. JSON-LD structured data (most reliable — what Google parses)\n  const ldBlocks = html.match(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi) || [];\n  for (const block of ldBlocks) {\n    const inner = block.replace(/<script[^>]*>|<\\/script>/gi, '').trim();\n    try {\n      const ld = JSON.parse(inner);\n      const items = Array.isArray(ld) ? ld : [ld];\n      for (const item of items) {\n        if (!email && item.email) email = item.email;\n        if (!description && item.description) description = String(item.description).trim().substring(0, 300);\n        if (item.sameAs) {\n          const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [item.sameAs];\n          for (const url of sameAs) {\n            if (!facebook && /facebook\\.com/i.test(url)) facebook = url;\n            if (!instagram && /instagram\\.com/i.test(url)) instagram = url;\n            if (!twitter && /(twitter|x)\\.com/i.test(url)) twitter = url;\n          }\n        }\n        if (!key_person) {\n          const candidate = item.founder || item.employee || item.author;\n          if (candidate) {\n            const name = typeof candidate === 'string' ? candidate\n              : (Array.isArray(candidate) ? candidate[0]?.name : candidate.name);\n            if (name && typeof name === 'string' && /^[A-Z]/.test(name)) key_person = name;\n          }\n        }\n      }\n    } catch(e) {}\n  }\n\n  // 2. mailto: href links (more reliable than body-text regex)\n  if (!email) {\n    const mailto = html.match(/href=[\"']mailto:([^\"'?\\s]+)/i);\n    if (mailto) email = mailto[1];\n  }\n  // 3. Regex email fallback\n  if (!email) {\n    const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n      .filter(e => !/\\.(png|jpg|gif|svg|css|js)$/i.test(e) && !/\\d{4,}/.test(e));\n    email = emails[0] || '';\n  }\n\n  // 4. Social links from href= attributes (far more reliable than body-text scan)\n  if (!facebook) {\n    const fb = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?\\/])[\\w.%-]+)/i);\n    if (fb) facebook = fb[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!instagram) {\n    const ig = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+)/i);\n    if (ig) instagram = ig[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!twitter) {\n    const tw = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+)/i);\n    if (tw) twitter = tw[1].split(/[\"'<>\\s]/)[0];\n  }\n\n  // 5. Meta description fallback\n  if (!description) {\n    const desc = html.match(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']{10,})/i)\n              || html.match(/<meta[^>]+content=[\"']([^\"']{10,})[\"'][^>]+name=[\"']description/i);\n    if (desc) description = desc[1].trim().substring(0, 300);\n  }\n\n  // 6. Key person from visible text patterns\n  if (!key_person) {\n    const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^<]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n    if (person) key_person = person[1];\n  }\n}\n\nif (staticData.results.length > 0) {\n  const last = staticData.results[staticData.results.length - 1];\n  if (!key_person) {\n    const reviews = Array.isArray(last.reviews) ? last.reviews : [];\n    for (const review of reviews) {\n      const lower = review.toLowerCase();\n      const triggers = ['owner ', 'founded by ', 'owned by ', 'run by ', 'managed by '];\n      for (const trigger of triggers) {\n        const idx = lower.indexOf(trigger);\n        if (idx !== -1) {\n          const after = review.slice(idx + trigger.length).trim();\n          const nm = after.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);\n          if (nm) { key_person = nm[1]; break; }\n        }\n      }\n      if (key_person) break;\n    }\n  }\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook || last.facebook || '';\n  last.instagram = instagram || last.instagram || '';\n  last.twitter = twitter || last.twitter || '';\n  last.description = description;\n  delete last.reviews;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nif (!myData.results) myData.results = [];\n\nconst res = $input.first().json;\nlet email = '', key_person = '', facebook = '', instagram = '', twitter = '', description = '';\n\nconst html = typeof res.body === 'string' ? res.body : '';\nif (html.length > 100) {\n  const ldBlocks = html.match(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi) || [];\n  for (const block of ldBlocks) {\n    const inner = block.replace(/<script[^>]*>|<\\/script>/gi, '').trim();\n    try {\n      const ld = JSON.parse(inner);\n      const items = Array.isArray(ld) ? ld : [ld];\n      for (const item of items) {\n        if (!email && item.email) email = item.email;\n        if (!description && item.description) description = String(item.description).trim().substring(0, 300);\n        if (item.sameAs) {\n          const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [item.sameAs];\n          for (const url of sameAs) {\n            if (!facebook && /facebook\\.com/i.test(url)) facebook = url;\n            if (!instagram && /instagram\\.com/i.test(url)) instagram = url;\n            if (!twitter && /(twitter|x)\\.com/i.test(url)) twitter = url;\n          }\n        }\n        if (!key_person) {\n          const candidate = item.founder || item.employee || item.author;\n          if (candidate) {\n            const name = typeof candidate === 'string' ? candidate\n              : (Array.isArray(candidate) ? candidate[0]?.name : candidate.name);\n            if (name && typeof name === 'string' && /^[A-Z]/.test(name)) key_person = name;\n          }\n        }\n      }\n    } catch(e) {}\n  }\n\n  if (!email) {\n    const mailto = html.match(/href=[\"']mailto:([^\"'?\\s]+)/i);\n    if (mailto) email = mailto[1];\n  }\n  if (!email) {\n    const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n      .filter(e => !/(png|jpg|gif|svg|css|js)$/i.test(e) && !/\\d{4,}/.test(e));\n    email = emails[0] || '';\n  }\n\n  if (!facebook) {\n    const fb = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?\\/])[\\w.%-]+)/i);\n    if (fb) facebook = fb[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!instagram) {\n    const ig = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+)/i);\n    if (ig) instagram = ig[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!twitter) {\n    const tw = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+)/i);\n    if (tw) twitter = tw[1].split(/[\"'<>\\s]/)[0];\n  }\n\n  if (!description) {\n    const desc = html.match(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']{10,})/i)\n              || html.match(/<meta[^>]+content=[\"']([^\"']{10,})[\"'][^>]+name=[\"']description/i);\n    if (desc) description = desc[1].trim().substring(0, 300);\n  }\n\n  if (!key_person) {\n    const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^<]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n    if (person) key_person = person[1];\n  }\n}\n\nif (myData.results.length > 0) {\n  const last = myData.results[myData.results.length - 1];\n  if (!key_person) {\n    const reviews = Array.isArray(last.reviews) ? last.reviews : [];\n    for (const review of reviews) {\n      const lower = review.toLowerCase();\n      const triggers = ['owner ', 'founded by ', 'owned by ', 'run by ', 'managed by '];\n      for (const trigger of triggers) {\n        const idx = lower.indexOf(trigger);\n        if (idx !== -1) {\n          const after = review.slice(idx + trigger.length).trim();\n          const nm = after.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);\n          if (nm) { key_person = nm[1]; break; }\n        }\n      }\n      if (key_person) break;\n    }\n  }\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook || last.facebook || '';\n  last.instagram = instagram || last.instagram || '';\n  last.twitter = twitter || last.twitter || '';\n  last.description = description;\n  delete last.reviews;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
       },
       "id": "node-extractenrichment",
       "name": "Extract & Merge Enrichment",
@@ -293,12 +289,12 @@
       "typeVersion": 2,
       "position": [
         2480,
-        144
+        312
       ]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst leads = staticData.results || [];\n\nstaticData.results = [];\nstaticData.newPlaces = [];\n\nreturn [{ json: { leads, count: leads.length } }];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nconst leads = myData.results || [];\n\ndelete store[execId];\n\nreturn [{ json: { leads, count: leads.length } }];"
       },
       "id": "node-compileresults",
       "name": "Compile Results",
@@ -312,7 +308,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const leads = $input.first().json.leads || [];\nconst sheetId = $('Webhook').first().json.body.sheet_id || 'YOUR_DEFAULT_SHEET_ID';\nconst columns = ['place_id', 'name', 'address', 'phone', 'website', 'email', 'key_person', 'facebook', 'instagram', 'twitter', 'description', 'business_status', 'opening_hours', 'price_level', 'rating', 'user_ratings_total', 'types', 'found_at'];\nconst values = leads.map(lead => columns.map(col => String(lead[col] != null ? lead[col] : '')));\nreturn [{ json: { values, sheet_id: sheetId } }];"
+        "jsCode": "const leads = $input.first().json.leads || [];\nconst sheetId = $env.LEAD_FINDER_SHEET_ID;\nconst columns = [\n  'place_id','name','address','phone','website','email','key_person',\n  'facebook','instagram','twitter','description','business_status',\n  'opening_hours','price_level','rating','user_ratings_total','types','found_at',\n  'person_name','person_title','person_email','person_linkedin','person_instagram','person_twitter'\n];\nconst values = leads.map(lead => columns.map(col => String(lead[col] ?? '')));\nreturn [{ json: { values, sheet_id: sheetId } }];"
       },
       "id": "node-preparebatch",
       "name": "Prepare Batch Write",
@@ -334,7 +330,7 @@
           "parameters": [
             {
               "name": "valueInputOption",
-              "value": "USER_ENTERED"
+              "value": "RAW"
             },
             {
               "name": "insertDataOption",
@@ -353,15 +349,15 @@
       "typeVersion": 4.4,
       "position": [
         2480,
-        336
+        504
       ],
-      "onError": "continueRegularOutput",
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "YOUR_CREDENTIAL_ID",
+          "id": "IOYcAf4cVdbQtjgP",
           "name": "Google Sheets account"
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -375,7 +371,7 @@
       "typeVersion": 1.5,
       "position": [
         2704,
-        336
+        504
       ]
     },
     {
@@ -390,7 +386,24 @@
       "typeVersion": 1.5,
       "position": [
         1808,
-        504
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Failed to write leads to Google Sheets. Results were not saved.' }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "node-respond-append-error",
+      "name": "Respond (sheet write failed)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2704,
+        696
       ]
     }
   ],
@@ -600,12 +613,22 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Respond (sheet write failed)",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     }
   },
   "settings": {
     "executionOrder": "v1",
-    "callerPolicy": "workflowsFromSameOwner"
-  }
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "binaryMode": "separate"
+  },
+  "tags": []
 }
