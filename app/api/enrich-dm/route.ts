@@ -19,7 +19,16 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  // sheet_id intentionally not forwarded; n8n reads LEAD_FINDER_SHEET_ID from its own env.
+
+  const requestedSheetId = body.sheet_id as string | undefined;
+  const defaultSheetId = process.env.LEAD_FINDER_SHEET_ID;
+  if (requestedSheetId && defaultSheetId && requestedSheetId !== defaultSheetId) {
+    return NextResponse.json(
+      { error: 'Enrichment only works with the default sheet. Reset the sheet selector and try again.' },
+      { status: 400 }
+    );
+  }
+
   const payload = { only_missing: body.only_missing !== false };
 
   const base = process.env.N8N_WEBHOOK_URL_BASE;

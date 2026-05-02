@@ -12,22 +12,38 @@ export async function GET(req: NextRequest) {
 
   const sheetId = req.nextUrl.searchParams.get('sheet_id') ?? undefined;
 
-  const response = await fetch(`${base}/lead-finder-read`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sheet_id: sheetId }),
-    signal: AbortSignal.timeout(25000),
-  });
+  const [leadsRes, dmRes] = await Promise.all([
+    fetch(`${base}/lead-finder-read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheet_id: sheetId }),
+      signal: AbortSignal.timeout(25000),
+    }),
+    fetch(`${base}/lead-finder-dm-data${sheetId ? '?sheet_id=' + encodeURIComponent(sheetId) : ''}`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(10000),
+    }).catch(() => null),
+  ]);
 
-  if (!response.ok) {
-    return NextResponse.json({ error: `Upstream error: ${response.status}` }, { status: 502 });
+  if (!leadsRes.ok) {
+    return NextResponse.json({ error: `Upstream error: ${leadsRes.status}` }, { status: 502 });
   }
 
   let data;
   try {
-    data = await response.json();
+    data = await leadsRes.json();
   } catch {
     return NextResponse.json({ error: 'Invalid response from workflow' }, { status: 502 });
+  }
+
+  if (dmRes?.ok) {
+    try {
+      const dmData = await dmRes.json();
+      const dm = dmData.dm || {};
+      data.leads = (data.leads || []).map((lead: Record<string, string>) => ({
+        ...lead, ...(dm[lead.place_id] || {}),
+      }));
+    } catch { /* DM merge failed — return leads without enrichment */ }
   }
 
   return NextResponse.json(data);

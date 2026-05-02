@@ -8,12 +8,6 @@ interface Lead {
   address: string;
   phone: string;
   website: string;
-  email: string;
-  key_person: string;
-  facebook: string;
-  instagram: string;
-  twitter: string;
-  description: string;
   business_status: string;
   opening_hours: string;
   price_level: string;
@@ -23,6 +17,7 @@ interface Lead {
   found_at: string;
   person_name: string;
   person_title: string;
+  person_phone: string;
   person_email: string;
   person_linkedin: string;
   person_instagram: string;
@@ -61,10 +56,9 @@ function extractSheetId(input: string): string {
 
 function exportCSV(leads: Lead[]) {
   const headers: (keyof Lead)[] = [
-    'place_id','name','address','phone','website','email','key_person',
-    'facebook','instagram','twitter','description','business_status',
+    'place_id','name','address','phone','website','business_status',
     'opening_hours','price_level','rating','user_ratings_total','types','found_at',
-    'person_name','person_title','person_email','person_linkedin','person_instagram','person_twitter',
+    'person_name','person_title','person_phone','person_email','person_linkedin','person_instagram','person_twitter',
   ];
   const escape = (v: string) => {
     const s = (v || '');
@@ -145,23 +139,6 @@ function HoursCell({ hours }: { hours: string }) {
   );
 }
 
-function SocialLinks({ lead }: { lead: Lead }) {
-  const links = [
-    lead.facebook && { href: lead.facebook, label: 'FB' },
-    lead.instagram && { href: lead.instagram, label: 'IG' },
-    lead.twitter && { href: lead.twitter, label: 'X' },
-  ].filter(Boolean) as { href: string; label: string }[];
-  if (links.length === 0) return <span className="text-zinc-400">—</span>;
-  return (
-    <span className="flex gap-1.5">
-      {links.map(l => (
-        <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer"
-          className="text-xs font-medium text-blue-600 hover:underline">{l.label}</a>
-      ))}
-    </span>
-  );
-}
-
 function validSocialUrl(val: string, ...domains: string[]): boolean {
   if (!val || val === 'N/A') return false;
   try {
@@ -187,6 +164,9 @@ function DecisionMakerCell({ lead }: { lead: Lead }) {
       {lead.person_title && lead.person_title !== 'N/A' && (
         <div className="text-zinc-500">{lead.person_title}</div>
       )}
+      {lead.person_phone && lead.person_phone !== 'N/A' && (
+        <a href={`tel:${lead.person_phone}`} className="text-zinc-600 hover:underline block">{lead.person_phone}</a>
+      )}
       {validEmail && (
         <a href={`mailto:${lead.person_email}`} className="text-blue-600 hover:underline block truncate max-w-[200px]">
           {lead.person_email}
@@ -209,7 +189,7 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-200 bg-zinc-50">
-            {['Name','Address','Phone','Website','Email','Contact','Social','Description','Status','Rating','Price','Hours','Decision Maker'].map(h => (
+            {['Name','Address','Phone','Website','Status','Rating','Price','Hours','Decision Maker'].map(h => (
               <th key={h} className="px-4 py-3 text-left font-medium text-zinc-600 whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -223,18 +203,6 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
               <td className="px-4 py-3 whitespace-nowrap">
                 {lead.website
                   ? <a href={lead.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate block max-w-[160px]">{lead.website.replace(/^https?:\/\//, '')}</a>
-                  : <span className="text-zinc-400">—</span>}
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap">
-                {lead.email
-                  ? <a href={`mailto:${lead.email}`} className="text-blue-600 hover:underline text-xs">{lead.email}</a>
-                  : <span className="text-zinc-400">—</span>}
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap text-zinc-600 text-xs">{lead.key_person || <span className="text-zinc-400">—</span>}</td>
-              <td className="px-4 py-3 whitespace-nowrap"><SocialLinks lead={lead} /></td>
-              <td className="px-4 py-3 text-zinc-500 text-xs max-w-[220px]">
-                {lead.description
-                  ? <span title={lead.description} className="cursor-help line-clamp-2">{lead.description}</span>
                   : <span className="text-zinc-400">—</span>}
               </td>
               <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={lead.business_status} /></td>
@@ -653,7 +621,7 @@ export default function Home() {
                         const res = await fetch('/api/enrich-dm', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ only_missing: true }),
+                          body: JSON.stringify({ only_missing: true, sheet_id: activeSheetId }),
                         });
                         const data = await res.json();
                         if (res.status === 202) {
@@ -689,7 +657,7 @@ export default function Home() {
                 </div>
               </div>
               {enrichMsg && <p className="mb-3 text-sm text-zinc-500">{enrichMsg}</p>}
-              <p className="mb-3 text-xs text-zinc-400">AI enrichment powered by Groq · <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-zinc-600">View usage</a></p>
+              <p className="mb-3 text-xs text-zinc-400">AI enrichment powered by OpenAI · <a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer" className="underline hover:text-zinc-600">View usage</a></p>
 
               {leadsError && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{leadsError}</div>

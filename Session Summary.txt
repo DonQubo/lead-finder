@@ -1,3 +1,46 @@
+Session Summary — 2026-05-02
+What Was Accomplished
+1. Removed Legacy Fields from Sheet 1 Write (lead-finder.json)
+Updated the Prepare Batch Write node to write exactly 12 columns (down from 24):
+
+
+place_id | name | address | phone | website | business_status |
+opening_hours | price_level | rating | user_ratings_total | types | found_at
+Removed: email, key_person, facebook, instagram, twitter, description, and all person_* fields from Sheet 1 writes.
+
+2. Updated Frontend (page.tsx)
+Lead interface — trimmed to 19 fields (Sheet 1 fields + Sheet 3 DM enrichment fields)
+CSV export headers — matched trimmed interface
+SocialLinks component — deleted entirely
+Table headers — now 9 columns: Name, Address, Phone, Website, Status, Rating, Price, Hours, Decision Maker
+Table rows — removed Email, key_person, social links, and description cells
+3. Google Sheet Headers Corrected
+User manually updated Sheet 1 row 1 to match exact field names and column order required by:
+
+Prepare Batch Write (writes by column position)
+Lead interface / read workflow (reads by header name)
+Final sheet headers A–L: place_id, name, address, phone, website, business_status, opening_hours, price_level, rating, user_ratings_total, types, found_at
+
+4. Verified End-to-End
+lead-finder.json re-imported into n8n
+Data confirmed reflecting accurately in the app
+System State
+Component	Status
+n8n Prepare Batch Write	12 columns, fixed position order
+n8n Read workflow	Returns by header name
+Google Sheet 1 headers	Corrected, columns A–L
+Google Sheet 3 (DM data)	Unchanged
+page.tsx Lead interface	19 fields (Sheet 1 + DM)
+UI table	9 columns
+CSV export	Matches Lead interface
+Future Improvements (Not Active)
+Perplexity API — replace Tavily + OpenAI with single API call (sonar model, ~$0.005/req)
+AI Agent for DM research — replace Tavily + LLM pipeline with autonomous OpenAI agent
+Alternative search — Google Custom Search (100 free/day) or SerpAPI to cut Tavily cost
+
+
+
+
 Session Summary
 What we did
 Iteratively refined the plan for the Decision Maker Enrichment feature (Lead Finder - Enrich DM) across 5 revision cycles. The final plan is saved at:

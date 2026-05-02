@@ -1,634 +1,680 @@
-{
-  "id": "fwPorWv9MATm4gPq",
-  "name": "Lead Finder",
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "lead-finder",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "node-webhook",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
-      "position": [
-        240,
-        624
-      ],
-      "webhookId": "205946c0-ea93-4e0b-8359-86f87b942155",
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://places.googleapis.com/v1/places:searchText",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "X-Goog-Api-Key",
-              "value": "AIzaSyCOeXdsmlQWdxnyAig7-qjl298If8Ggfy0"
-            },
-            {
-              "name": "X-Goog-FieldMask",
-              "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,places.reviews,nextPageToken"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ textQuery: $json.body.business_type + ' in ' + $json.body.location, maxResultCount: 20 }) }}",
-        "options": {}
-      },
-      "id": "node-textsearch",
-      "name": "Google Places Text Search",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        464,
-        624
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst myData = store[execId];\nmyData.results = [];\n\nconst body = $('Webhook').first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + ' in ' + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p => ({\n  place_id: p.id,\n  name: p.displayName?.text || '',\n  address: p.formattedAddress || '',\n  phone: p.nationalPhoneNumber || '',\n  website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n  facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n  business_status: p.businessStatus || '',\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n  rating: p.rating !== undefined ? String(p.rating) : '',\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n  types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n  reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nmyData.textQuery = textQuery;\nmyData.newPlaces = places;\nmyData.nextToken = nextToken;\nmyData.maxResults = maxResults;\nmyData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken && maxPages > 1,\n  pages_remaining: myData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
-      },
-      "id": "node-processresults",
-      "name": "Process Text Search Results",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        688,
-        624
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "id": "has-more-check",
-              "leftValue": "={{ $json.has_more }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "node-hasmorepages",
-      "name": "Has More Pages",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        912,
-        624
-      ]
-    },
-    {
-      "parameters": {},
-      "id": "node-wait-pagetoken",
-      "name": "Wait for Token",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "position": [
-        1136,
-        552
-      ],
-      "webhookId": "b7e3f1a2-c4d5-6789-bcde-f01234567890"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://places.googleapis.com/v1/places:searchText",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "X-Goog-Api-Key",
-              "value": "AIzaSyCOeXdsmlQWdxnyAig7-qjl298If8Ggfy0"
-            },
-            {
-              "name": "X-Goog-FieldMask",
-              "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,places.reviews,nextPageToken"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ textQuery: $json.text_query, maxResultCount: 20, pageToken: $json.next_page_token }) }}",
-        "options": {}
-      },
-      "id": "node-fetchnextpage",
-      "name": "Fetch Next Page",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1360,
-        552
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\n\nconst page = $input.first().json;\n\nif (page.places && page.places.length > 0) {\n  const newPlaces = page.places.map(p => ({\n    place_id: p.id,\n    name: p.displayName?.text || '',\n    address: p.formattedAddress || '',\n    phone: p.nationalPhoneNumber || '',\n    website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || '') ? (p.websiteUri || '') : '',\n    facebook: /facebook\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    instagram: /instagram\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    twitter: /(twitter|x)\\.com/i.test(p.websiteUri || '') ? p.websiteUri : '',\n    business_status: p.businessStatus || '',\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(' | '),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : '',\n    rating: p.rating !== undefined ? String(p.rating) : '',\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : '',\n    types: Array.isArray(p.types) ? p.types.filter(t => t !== 'point_of_interest' && t !== 'establishment').join(', ') : '',\n    reviews: (p.reviews || []).map(r => typeof r.text === 'object' ? (r.text.text || '') : (r.text || '')).filter(Boolean)\n  }));\n  myData.newPlaces = [...(myData.newPlaces || []), ...newPlaces];\n  myData.nextToken = page.nextPageToken || null;\n}\n\nmyData.pagesRemaining = Math.max(0, (myData.pagesRemaining || 1) - 1);\n\nif (myData.newPlaces.length > myData.maxResults) {\n  myData.newPlaces = myData.newPlaces.slice(0, myData.maxResults);\n}\n\nconst hasMore = !!myData.nextToken && myData.pagesRemaining > 0;\n\nreturn [{ json: { has_more: hasMore, place_count: myData.newPlaces.length, next_page_token: myData.nextToken, text_query: myData.textQuery } }];"
-      },
-      "id": "node-accumulatepage",
-      "name": "Accumulate Page",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1584,
-        696
-      ]
-    },
-    {
-      "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "={{ $env.LEAD_FINDER_SHEET_ID }}",
-          "mode": "id"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "Sheet1",
-          "mode": "name"
-        },
-        "options": {}
-      },
-      "id": "node-readsheets",
-      "name": "Read Existing Leads",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.7,
-      "position": [
-        1136,
-        360
-      ],
-      "alwaysOutputData": true,
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "IOYcAf4cVdbQtjgP",
-          "name": "Google Sheets account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nconst newPlaces = myData.newPlaces || [];\n\nconst existingIds = new Set(\n  $input.all()\n    .map(item => item.json.place_id)\n    .filter(Boolean)\n);\n\nconst toProcess = newPlaces.filter(p => !existingIds.has(p.place_id));\n\nif (toProcess.length === 0) {\n  return [{ json: { __skip: true } }];\n}\n\nreturn toProcess.map(p => ({ json: p }));"
-      },
-      "id": "node-deduplicate",
-      "name": "Deduplicate",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1360,
-        360
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "id": "skip-check",
-              "leftValue": "={{ $json.__skip === true }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "node-if-newleads",
-      "name": "Has New Leads",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1584,
-        360
-      ]
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "id": "node-splitbatches",
-      "name": "Split In Batches",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [
-        1808,
-        240
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nif (!myData.results) myData.results = [];\n\nconst lead = { ...$input.first().json, found_at: new Date().toISOString() };\n\nmyData.results.push(lead);\nreturn [{ json: lead }];"
-      },
-      "id": "node-formatlead",
-      "name": "Format Lead",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2032,
-        144
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $json.website }}",
-        "options": {
-          "allowUnauthorizedCerts": true,
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "text"
-            }
-          },
-          "timeout": 8000
-        }
-      },
-      "id": "node-fetchwebsite",
-      "name": "Fetch Website",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        2256,
-        144
-      ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nif (!myData.results) myData.results = [];\n\nconst res = $input.first().json;\nlet email = '', key_person = '', facebook = '', instagram = '', twitter = '', description = '';\n\nconst html = typeof res.body === 'string' ? res.body : '';\nif (html.length > 100) {\n  const ldBlocks = html.match(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi) || [];\n  for (const block of ldBlocks) {\n    const inner = block.replace(/<script[^>]*>|<\\/script>/gi, '').trim();\n    try {\n      const ld = JSON.parse(inner);\n      const items = Array.isArray(ld) ? ld : [ld];\n      for (const item of items) {\n        if (!email && item.email) email = item.email;\n        if (!description && item.description) description = String(item.description).trim().substring(0, 300);\n        if (item.sameAs) {\n          const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [item.sameAs];\n          for (const url of sameAs) {\n            if (!facebook && /facebook\\.com/i.test(url)) facebook = url;\n            if (!instagram && /instagram\\.com/i.test(url)) instagram = url;\n            if (!twitter && /(twitter|x)\\.com/i.test(url)) twitter = url;\n          }\n        }\n        if (!key_person) {\n          const candidate = item.founder || item.employee || item.author;\n          if (candidate) {\n            const name = typeof candidate === 'string' ? candidate\n              : (Array.isArray(candidate) ? candidate[0]?.name : candidate.name);\n            if (name && typeof name === 'string' && /^[A-Z]/.test(name)) key_person = name;\n          }\n        }\n      }\n    } catch(e) {}\n  }\n\n  if (!email) {\n    const mailto = html.match(/href=[\"']mailto:([^\"'?\\s]+)/i);\n    if (mailto) email = mailto[1];\n  }\n  if (!email) {\n    const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n      .filter(e => !/(png|jpg|gif|svg|css|js)$/i.test(e) && !/\\d{4,}/.test(e));\n    email = emails[0] || '';\n  }\n\n  if (!facebook) {\n    const fb = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?\\/])[\\w.%-]+)/i);\n    if (fb) facebook = fb[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!instagram) {\n    const ig = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+)/i);\n    if (ig) instagram = ig[1].split(/[\"'<>\\s]/)[0];\n  }\n  if (!twitter) {\n    const tw = html.match(/href=[\"'](https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+)/i);\n    if (tw) twitter = tw[1].split(/[\"'<>\\s]/)[0];\n  }\n\n  if (!description) {\n    const desc = html.match(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']{10,})/i)\n              || html.match(/<meta[^>]+content=[\"']([^\"']{10,})[\"'][^>]+name=[\"']description/i);\n    if (desc) description = desc[1].trim().substring(0, 300);\n  }\n\n  if (!key_person) {\n    const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^<]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n    if (person) key_person = person[1];\n  }\n}\n\nif (myData.results.length > 0) {\n  const last = myData.results[myData.results.length - 1];\n  if (!key_person) {\n    const reviews = Array.isArray(last.reviews) ? last.reviews : [];\n    for (const review of reviews) {\n      const lower = review.toLowerCase();\n      const triggers = ['owner ', 'founded by ', 'owned by ', 'run by ', 'managed by '];\n      for (const trigger of triggers) {\n        const idx = lower.indexOf(trigger);\n        if (idx !== -1) {\n          const after = review.slice(idx + trigger.length).trim();\n          const nm = after.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);\n          if (nm) { key_person = nm[1]; break; }\n        }\n      }\n      if (key_person) break;\n    }\n  }\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook || last.facebook || '';\n  last.instagram = instagram || last.instagram || '';\n  last.twitter = twitter || last.twitter || '';\n  last.description = description;\n  delete last.reviews;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
-      },
-      "id": "node-extractenrichment",
-      "name": "Extract & Merge Enrichment",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2480,
-        312
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst myData = store[execId] || {};\nconst leads = myData.results || [];\n\ndelete store[execId];\n\nreturn [{ json: { leads, count: leads.length } }];"
-      },
-      "id": "node-compileresults",
-      "name": "Compile Results",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2032,
-        336
-      ],
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const leads = $input.first().json.leads || [];\nconst sheetId = $env.LEAD_FINDER_SHEET_ID;\nconst columns = [\n  'place_id','name','address','phone','website','email','key_person',\n  'facebook','instagram','twitter','description','business_status',\n  'opening_hours','price_level','rating','user_ratings_total','types','found_at',\n  'person_name','person_title','person_email','person_linkedin','person_instagram','person_twitter'\n];\nconst values = leads.map(lead => columns.map(col => String(lead[col] ?? '')));\nreturn [{ json: { values, sheet_id: sheetId } }];"
-      },
-      "id": "node-preparebatch",
-      "name": "Prepare Batch Write",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2256,
-        336
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ 'https://sheets.googleapis.com/v4/spreadsheets/' + $json.sheet_id + '/values/Sheet1:append' }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleSheetsOAuth2Api",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "valueInputOption",
-              "value": "RAW"
-            },
-            {
-              "name": "insertDataOption",
-              "value": "INSERT_ROWS"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ values: $json.values }) }}",
-        "options": {}
-      },
-      "id": "node-batchappend",
-      "name": "Batch Append to Sheet",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        2480,
-        504
-      ],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "IOYcAf4cVdbQtjgP",
-          "name": "Google Sheets account"
-        }
-      },
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($('Compile Results').first().json) }}",
-        "options": {}
-      },
-      "id": "node-respond",
-      "name": "Respond to Webhook",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        2704,
-        504
-      ]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ leads: [], count: 0 }) }}",
-        "options": {}
-      },
-      "id": "node-respond-empty",
-      "name": "Respond (no new leads)",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        1808,
-        432
-      ]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: 'Failed to write leads to Google Sheets. Results were not saved.' }) }}",
-        "options": {
-          "responseCode": 502
-        }
-      },
-      "id": "node-respond-append-error",
-      "name": "Respond (sheet write failed)",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        2704,
-        696
-      ]
-    }
-  ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Google Places Text Search",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Google Places Text Search": {
-      "main": [
-        [
-          {
-            "node": "Process Text Search Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Process Text Search Results": {
-      "main": [
-        [
-          {
-            "node": "Has More Pages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Has More Pages": {
-      "main": [
-        [
-          {
-            "node": "Wait for Token",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Read Existing Leads",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Wait for Token": {
-      "main": [
-        [
-          {
-            "node": "Fetch Next Page",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Next Page": {
-      "main": [
-        [
-          {
-            "node": "Accumulate Page",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Accumulate Page": {
-      "main": [
-        [
-          {
-            "node": "Has More Pages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Read Existing Leads": {
-      "main": [
-        [
-          {
-            "node": "Deduplicate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Deduplicate": {
-      "main": [
-        [
-          {
-            "node": "Has New Leads",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Has New Leads": {
-      "main": [
-        [
-          {
-            "node": "Respond (no new leads)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Split In Batches",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split In Batches": {
-      "main": [
-        [
-          {
-            "node": "Compile Results",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Format Lead",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Format Lead": {
-      "main": [
-        [
-          {
-            "node": "Fetch Website",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Website": {
-      "main": [
-        [
-          {
-            "node": "Extract & Merge Enrichment",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract & Merge Enrichment": {
-      "main": [
-        [
-          {
-            "node": "Split In Batches",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Compile Results": {
-      "main": [
-        [
-          {
-            "node": "Prepare Batch Write",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prepare Batch Write": {
-      "main": [
-        [
-          {
-            "node": "Batch Append to Sheet",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Batch Append to Sheet": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Respond (sheet write failed)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "settings": {
-    "executionOrder": "v1",
-    "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false,
-    "binaryMode": "separate"
-  },
-  "tags": []
+﻿{
+    "id":  "fwPorWv9MATm4gPq",
+    "name":  "Lead Finder",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "lead-finder",
+                                         "responseMode":  "responseNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-webhook",
+                      "name":  "Webhook",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2.1,
+                      "position":  [
+                                       240,
+                                       624
+                                   ],
+                      "webhookId":  "205946c0-ea93-4e0b-8359-86f87b942155",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://places.googleapis.com/v1/places:searchText",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "X-Goog-Api-Key",
+                                                                                         "value":  "={{ $(\u0027Read Config\u0027).first().json.apiKey }}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "X-Goog-FieldMask",
+                                                                                         "value":  "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,places.reviews,nextPageToken"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ textQuery: $(\u0027Webhook\u0027).first().json.body.business_type + \u0027 in \u0027 + $(\u0027Webhook\u0027).first().json.body.location, maxResultCount: 20 }) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-textsearch",
+                      "name":  "Google Places Text Search",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       464,
+                                       624
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const execId = $execution.id;\nconst store = $getWorkflowStaticData(\u0027global\u0027);\nif (!store[execId]) store[execId] = {};\nconst myData = store[execId];\nmyData.results = [];\n\nconst body = $(\u0027Webhook\u0027).first().json.body;\nconst maxResults = Math.min(parseInt(body.max_results) || 20, 60);\nconst maxPages = Math.ceil(maxResults / 20);\nconst textQuery = body.business_type + \u0027 in \u0027 + body.location;\n\nconst firstPage = $input.first().json;\nconst places = (firstPage.places || []).map(p =\u003e ({\n  place_id: p.id,\n  name: p.displayName?.text || \u0027\u0027,\n  address: p.formattedAddress || \u0027\u0027,\n  phone: p.nationalPhoneNumber || \u0027\u0027,\n  website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || \u0027\u0027) ? (p.websiteUri || \u0027\u0027) : \u0027\u0027,\n  facebook: /facebook\\.com/i.test(p.websiteUri || \u0027\u0027) ? p.websiteUri : \u0027\u0027,\n  instagram: /instagram\\.com/i.test(p.websiteUri || \u0027\u0027) ? p.websiteUri : \u0027\u0027,\n  twitter: /(twitter|x)\\.com/i.test(p.websiteUri || \u0027\u0027) ? p.websiteUri : \u0027\u0027,\n  business_status: p.businessStatus || \u0027\u0027,\n  opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(\u0027 | \u0027),\n  price_level: p.priceLevel !== undefined ? String(p.priceLevel) : \u0027\u0027,\n  rating: p.rating !== undefined ? String(p.rating) : \u0027\u0027,\n  user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : \u0027\u0027,\n  types: Array.isArray(p.types) ? p.types.filter(t =\u003e t !== \u0027point_of_interest\u0027 \u0026\u0026 t !== \u0027establishment\u0027).join(\u0027, \u0027) : \u0027\u0027,\n  reviews: (p.reviews || []).map(r =\u003e typeof r.text === \u0027object\u0027 ? (r.text.text || \u0027\u0027) : (r.text || \u0027\u0027)).filter(Boolean)\n}));\n\nconst nextToken = firstPage.nextPageToken || null;\n\nmyData.textQuery = textQuery;\nmyData.newPlaces = places;\nmyData.nextToken = nextToken;\nmyData.maxResults = maxResults;\nmyData.pagesRemaining = Math.max(0, maxPages - 1);\n\nreturn [{ json: {\n  place_count: places.length,\n  has_more: !!nextToken \u0026\u0026 maxPages \u003e 1,\n  pages_remaining: myData.pagesRemaining,\n  next_page_token: nextToken,\n  text_query: textQuery\n}}];"
+                                     },
+                      "id":  "node-processresults",
+                      "name":  "Process Text Search Results",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       688,
+                                       624
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  1
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "has-more-check",
+                                                                                   "leftValue":  "={{ $json.has_more }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-hasmorepages",
+                      "name":  "Has More Pages",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2,
+                      "position":  [
+                                       912,
+                                       624
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "id":  "node-wait-pagetoken",
+                      "name":  "Wait for Token",
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       1136,
+                                       552
+                                   ],
+                      "webhookId":  "b7e3f1a2-c4d5-6789-bcde-f01234567890"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://places.googleapis.com/v1/places:searchText",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "X-Goog-Api-Key",
+                                                                                         "value":  "={{ $(\u0027Read Config\u0027).first().json.apiKey }}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "X-Goog-FieldMask",
+                                                                                         "value":  "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.regularOpeningHours,places.priceLevel,places.rating,places.userRatingCount,places.types,places.reviews,nextPageToken"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ textQuery: $json.text_query, maxResultCount: 20, pageToken: $json.next_page_token }) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-fetchnextpage",
+                      "name":  "Fetch Next Page",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       1360,
+                                       552
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const execId = $execution.id;\nconst store = $getWorkflowStaticData(\u0027global\u0027);\nconst myData = store[execId] || {};\n\nconst page = $input.first().json;\n\nif (page.places \u0026\u0026 page.places.length \u003e 0) {\n  const newPlaces = page.places.map(p =\u003e ({\n    place_id: p.id,\n    name: p.displayName?.text || \u0027\u0027,\n    address: p.formattedAddress || \u0027\u0027,\n    phone: p.nationalPhoneNumber || \u0027\u0027,\n    website: !/facebook\\.com|instagram\\.com|(?:twitter|x)\\.com/i.test(p.websiteUri || \u0027\u0027) ? (p.websiteUri || \u0027\u0027) : \u0027\u0027,\n    facebook: /facebook\\.com/i.test(p.websiteUri || \u0027\u0027) ? p.websiteUri : \u0027\u0027,\n    instagram: /instagram\\.com/i.test(p.websiteUri || \u0027\u0027) ? p.websiteUri : \u0027\u0027,\n    twitter: /(twitter|x)\\.com/i.test(p.websiteUri || \u0027\u0027) ? p.websiteUri : \u0027\u0027,\n    business_status: p.businessStatus || \u0027\u0027,\n    opening_hours: (p.regularOpeningHours?.weekdayDescriptions || []).join(\u0027 | \u0027),\n    price_level: p.priceLevel !== undefined ? String(p.priceLevel) : \u0027\u0027,\n    rating: p.rating !== undefined ? String(p.rating) : \u0027\u0027,\n    user_ratings_total: p.userRatingCount !== undefined ? String(p.userRatingCount) : \u0027\u0027,\n    types: Array.isArray(p.types) ? p.types.filter(t =\u003e t !== \u0027point_of_interest\u0027 \u0026\u0026 t !== \u0027establishment\u0027).join(\u0027, \u0027) : \u0027\u0027,\n    reviews: (p.reviews || []).map(r =\u003e typeof r.text === \u0027object\u0027 ? (r.text.text || \u0027\u0027) : (r.text || \u0027\u0027)).filter(Boolean)\n  }));\n  myData.newPlaces = [...(myData.newPlaces || []), ...newPlaces];\n  myData.nextToken = page.nextPageToken || null;\n}\n\nmyData.pagesRemaining = Math.max(0, (myData.pagesRemaining || 1) - 1);\n\nif (myData.newPlaces.length \u003e myData.maxResults) {\n  myData.newPlaces = myData.newPlaces.slice(0, myData.maxResults);\n}\n\nconst hasMore = !!myData.nextToken \u0026\u0026 myData.pagesRemaining \u003e 0;\n\nreturn [{ json: { has_more: hasMore, place_count: myData.newPlaces.length, next_page_token: myData.nextToken, text_query: myData.textQuery } }];"
+                                     },
+                      "id":  "node-accumulatepage",
+                      "name":  "Accumulate Page",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1584,
+                                       696
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "documentId":  {
+                                                            "__rl":  true,
+                                                            "value":  "={{ $(\u0027Read Config\u0027).first().json.sheetId }}",
+                                                            "mode":  "id"
+                                                        },
+                                         "sheetName":  {
+                                                           "__rl":  true,
+                                                           "value":  "Sheet1",
+                                                           "mode":  "name"
+                                                       },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-readsheets",
+                      "name":  "Read Existing Leads",
+                      "type":  "n8n-nodes-base.googleSheets",
+                      "typeVersion":  4.7,
+                      "position":  [
+                                       1136,
+                                       360
+                                   ],
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "googleSheetsOAuth2Api":  {
+                                                                        "id":  "IOYcAf4cVdbQtjgP",
+                                                                        "name":  "Google Sheets account"
+                                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const execId = $execution.id;\nconst store = $getWorkflowStaticData(\u0027global\u0027);\nconst myData = store[execId] || {};\nconst newPlaces = myData.newPlaces || [];\n\nconst existingIds = new Set(\n  $input.all()\n    .map(item =\u003e item.json.place_id)\n    .filter(Boolean)\n);\n\nconst toProcess = newPlaces.filter(p =\u003e !existingIds.has(p.place_id));\n\nif (toProcess.length === 0) {\n  return [{ json: { __skip: true } }];\n}\n\nreturn toProcess.map(p =\u003e ({ json: p }));"
+                                     },
+                      "id":  "node-deduplicate",
+                      "name":  "Deduplicate",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1360,
+                                       360
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  1
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "skip-check",
+                                                                                   "leftValue":  "={{ $json.__skip === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-if-newleads",
+                      "name":  "Has New Leads",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1584,
+                                       360
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-splitbatches",
+                      "name":  "Split In Batches",
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1808,
+                                       240
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const execId = $execution.id;\nconst store = $getWorkflowStaticData(\u0027global\u0027);\nconst myData = store[execId] || {};\nif (!myData.results) myData.results = [];\n\nconst lead = { ...$input.first().json, found_at: new Date().toISOString() };\n\nmyData.results.push(lead);\nreturn [{ json: lead }];"
+                                     },
+                      "id":  "node-formatlead",
+                      "name":  "Format Lead",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2032,
+                                       144
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "={{ $json.website }}",
+                                         "options":  {
+                                                         "allowUnauthorizedCerts":  true,
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "fullResponse":  true,
+                                                                                           "responseFormat":  "text"
+                                                                                       }
+                                                                      },
+                                                         "timeout":  8000
+                                                     }
+                                     },
+                      "id":  "node-fetchwebsite",
+                      "name":  "Fetch Website",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       2256,
+                                       144
+                                   ],
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const execId = $execution.id;\nconst store = $getWorkflowStaticData(\u0027global\u0027);\nconst myData = store[execId] || {};\nif (!myData.results) myData.results = [];\n\nconst res = $input.first().json;\nlet email = \u0027\u0027, key_person = \u0027\u0027, facebook = \u0027\u0027, instagram = \u0027\u0027, twitter = \u0027\u0027, description = \u0027\u0027;\n\nconst html = typeof res.body === \u0027string\u0027 ? res.body : \u0027\u0027;\nif (html.length \u003e 100) {\n  const ldBlocks = html.match(/\u003cscript[^\u003e]+type=[\"\u0027]application\\/ld\\+json[\"\u0027][^\u003e]*\u003e([\\s\\S]*?)\u003c\\/script\u003e/gi) || [];\n  for (const block of ldBlocks) {\n    const inner = block.replace(/\u003cscript[^\u003e]*\u003e|\u003c\\/script\u003e/gi, \u0027\u0027).trim();\n    try {\n      const ld = JSON.parse(inner);\n      const items = Array.isArray(ld) ? ld : [ld];\n      for (const item of items) {\n        if (!email \u0026\u0026 item.email) email = item.email;\n        if (!description \u0026\u0026 item.description) description = String(item.description).trim().substring(0, 300);\n        if (item.sameAs) {\n          const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [item.sameAs];\n          for (const url of sameAs) {\n            if (!facebook \u0026\u0026 /facebook\\.com/i.test(url)) facebook = url;\n            if (!instagram \u0026\u0026 /instagram\\.com/i.test(url)) instagram = url;\n            if (!twitter \u0026\u0026 /(twitter|x)\\.com/i.test(url)) twitter = url;\n          }\n        }\n        if (!key_person) {\n          const candidate = item.founder || item.employee || item.author;\n          if (candidate) {\n            const name = typeof candidate === \u0027string\u0027 ? candidate\n              : (Array.isArray(candidate) ? candidate[0]?.name : candidate.name);\n            if (name \u0026\u0026 typeof name === \u0027string\u0027 \u0026\u0026 /^[A-Z]/.test(name)) key_person = name;\n          }\n        }\n      }\n    } catch(e) {}\n  }\n\n  if (!email) {\n    const mailto = html.match(/href=[\"\u0027]mailto:([^\"\u0027?\\s]+)/i);\n    if (mailto) email = mailto[1];\n  }\n  if (!email) {\n    const emails = (html.match(/[\\w.+%-]+@[\\w-]+\\.[a-zA-Z]{2,}/g) || [])\n      .filter(e =\u003e !/(png|jpg|gif|svg|css|js)$/i.test(e) \u0026\u0026 !/\\d{4,}/.test(e));\n    email = emails[0] || \u0027\u0027;\n  }\n\n  if (!facebook) {\n    const fb = html.match(/href=[\"\u0027](https?:\\/\\/(?:www\\.)?facebook\\.com\\/(?!sharer|share\\.|tr[?\\/])[\\w.%-]+)/i);\n    if (fb) facebook = fb[1].split(/[\"\u0027\u003c\u003e\\s]/)[0];\n  }\n  if (!instagram) {\n    const ig = html.match(/href=[\"\u0027](https?:\\/\\/(?:www\\.)?instagram\\.com\\/[\\w.]+)/i);\n    if (ig) instagram = ig[1].split(/[\"\u0027\u003c\u003e\\s]/)[0];\n  }\n  if (!twitter) {\n    const tw = html.match(/href=[\"\u0027](https?:\\/\\/(?:www\\.)?(?:twitter|x)\\.com\\/(?!share|intent)[\\w]+)/i);\n    if (tw) twitter = tw[1].split(/[\"\u0027\u003c\u003e\\s]/)[0];\n  }\n\n  if (!description) {\n    const desc = html.match(/\u003cmeta[^\u003e]+name=[\"\u0027]description[\"\u0027][^\u003e]+content=[\"\u0027]([^\"\u0027]{10,})/i)\n              || html.match(/\u003cmeta[^\u003e]+content=[\"\u0027]([^\"\u0027]{10,})[\"\u0027][^\u003e]+name=[\"\u0027]description/i);\n    if (desc) description = desc[1].trim().substring(0, 300);\n  }\n\n  if (!key_person) {\n    const person = html.match(/(?:Owner|CEO|Founder|President|Director|Principal)[^\u003c]{0,50}?([A-Z][a-z]+ [A-Z][a-z]+)/);\n    if (person) key_person = person[1];\n  }\n}\n\nif (myData.results.length \u003e 0) {\n  const last = myData.results[myData.results.length - 1];\n  if (!key_person) {\n    const reviews = Array.isArray(last.reviews) ? last.reviews : [];\n    for (const review of reviews) {\n      const lower = review.toLowerCase();\n      const triggers = [\u0027owner \u0027, \u0027founded by \u0027, \u0027owned by \u0027, \u0027run by \u0027, \u0027managed by \u0027];\n      for (const trigger of triggers) {\n        const idx = lower.indexOf(trigger);\n        if (idx !== -1) {\n          const after = review.slice(idx + trigger.length).trim();\n          const nm = after.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);\n          if (nm) { key_person = nm[1]; break; }\n        }\n      }\n      if (key_person) break;\n    }\n  }\n  last.email = email;\n  last.key_person = key_person;\n  last.facebook = facebook || last.facebook || \u0027\u0027;\n  last.instagram = instagram || last.instagram || \u0027\u0027;\n  last.twitter = twitter || last.twitter || \u0027\u0027;\n  last.description = description;\n  delete last.reviews;\n  return [{ json: { ...last } }];\n}\n\nreturn [{ json: {} }];"
+                                     },
+                      "id":  "node-extractenrichment",
+                      "name":  "Extract \u0026 Merge Enrichment",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2480,
+                                       312
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const execId = $execution.id;\nconst store = $getWorkflowStaticData(\u0027global\u0027);\nconst myData = store[execId] || {};\nconst leads = myData.results || [];\n\ndelete store[execId];\n\nreturn [{ json: { leads, count: leads.length } }];"
+                                     },
+                      "id":  "node-compileresults",
+                      "name":  "Compile Results",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2032,
+                                       336
+                                   ],
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const leads = $input.first().json.leads || [];\nconst sheetId = $(\u0027Read Config\u0027).first().json.sheetId;\nconst columns = [\n  \u0027place_id\u0027,\u0027name\u0027,\u0027address\u0027,\u0027phone\u0027,\u0027website\u0027,\u0027business_status\u0027,\n  \u0027opening_hours\u0027,\u0027price_level\u0027,\u0027rating\u0027,\u0027user_ratings_total\u0027,\u0027types\u0027,\u0027found_at\u0027\n];\nconst values = leads.map(lead =\u003e columns.map(col =\u003e String(lead[col] ?? \u0027\u0027)));\nreturn [{ json: { values, sheet_id: sheetId } }];"
+                                     },
+                      "id":  "node-preparebatch",
+                      "name":  "Prepare Batch Write",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2256,
+                                       336
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "={{ \u0027https://sheets.googleapis.com/v4/spreadsheets/\u0027 + $json.sheet_id + \u0027/values/Sheet1:append\u0027 }}",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "googleSheetsOAuth2Api",
+                                         "sendQuery":  true,
+                                         "queryParameters":  {
+                                                                 "parameters":  [
+                                                                                    {
+                                                                                        "name":  "valueInputOption",
+                                                                                        "value":  "RAW"
+                                                                                    },
+                                                                                    {
+                                                                                        "name":  "insertDataOption",
+                                                                                        "value":  "INSERT_ROWS"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ values: $json.values }) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-batchappend",
+                      "name":  "Batch Append to Sheet",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       2480,
+                                       504
+                                   ],
+                      "credentials":  {
+                                          "googleSheetsOAuth2Api":  {
+                                                                        "id":  "IOYcAf4cVdbQtjgP",
+                                                                        "name":  "Google Sheets account"
+                                                                    }
+                                      },
+                      "onError":  "continueErrorOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "respondWith":  "json",
+                                         "responseBody":  "={{ JSON.stringify($(\u0027Compile Results\u0027).first().json) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-respond",
+                      "name":  "Respond to Webhook",
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       2704,
+                                       504
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "respondWith":  "json",
+                                         "responseBody":  "={{ JSON.stringify({ leads: [], count: 0 }) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "node-respond-empty",
+                      "name":  "Respond (no new leads)",
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       1808,
+                                       432
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "respondWith":  "json",
+                                         "responseBody":  "={{ JSON.stringify({ error: \u0027Failed to write leads to Google Sheets. Results were not saved.\u0027 }) }}",
+                                         "options":  {
+                                                         "responseCode":  502
+                                                     }
+                                     },
+                      "id":  "node-respond-append-error",
+                      "name":  "Respond (sheet write failed)",
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       2704,
+                                       696
+                                   ]
+                  },
+                  {
+                      "id":  "node-readconfig-main",
+                      "name":  "Read Config",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       352,
+                                       520
+                                   ],
+                      "parameters":  {
+                                         "jsCode":  "return [{ json: {\n  apiKey: $env.GOOGLE_PLACES_API_KEY,\n  sheetId: $(\u0027Webhook\u0027).first().json.body.sheet_id || $env.LEAD_FINDER_SHEET_ID\n}}];"
+                                     }
+                  }
+              ],
+    "connections":  {
+                        "Google Places Text Search":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Process Text Search Results",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Process Text Search Results":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "node":  "Has More Pages",
+                                                                                 "type":  "main",
+                                                                                 "index":  0
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Has More Pages":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Wait for Token",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "node":  "Read Existing Leads",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Wait for Token":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Fetch Next Page",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Fetch Next Page":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Accumulate Page",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Accumulate Page":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Has More Pages",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Read Existing Leads":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Deduplicate",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Deduplicate":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Has New Leads",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Has New Leads":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Respond (no new leads)",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "node":  "Split In Batches",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Split In Batches":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Compile Results",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "node":  "Format Lead",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Format Lead":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Fetch Website",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Fetch Website":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Extract \u0026 Merge Enrichment",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Extract \u0026 Merge Enrichment":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "node":  "Split In Batches",
+                                                                                     "type":  "main",
+                                                                                     "index":  0
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                        "Compile Results":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Prepare Batch Write",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Prepare Batch Write":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Batch Append to Sheet",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Batch Append to Sheet":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Respond to Webhook",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ],
+                                                                   [
+                                                                       {
+                                                                           "node":  "Respond (sheet write failed)",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Webhook":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "node":  "Read Config",
+                                                             "type":  "main",
+                                                             "index":  0
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Read Config":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Google Places Text Search",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "callerPolicy":  "workflowsFromSameOwner",
+                     "availableInMCP":  false,
+                     "binaryMode":  "separate"
+                 },
+    "meta":  null
 }
