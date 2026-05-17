@@ -1,0 +1,63 @@
+Session Summary — 2026-05-10 16:00
+
+Issues Diagnosed & Fixed
+========================
+
+1. Google Sheets OAuth Token Expiry (invalid_grant)
+   Root cause: OAuth consent screen was in "Testing" mode, which expires refresh tokens after 7 days.
+   Fix: Published the OAuth app (APIs & Services → OAuth consent screen → "Publish App"), then reconnected
+   the "Google Sheets account" credential in n8n.
+   Impact: Affected all Lead Finder workflows that write/read Google Sheets (Lead Finder, Lead Finder - Enrich DM,
+   Lead Finder - Read, Lead Finder - Clear).
+
+2. Google Sheets 404 NOT_FOUND ("Read Sheet" / "Read Existing Leads1")
+   Root cause: Cascading symptom of the OAuth failure above. When the token was invalid, the Google Sheets API
+   returned 404 during the sheet-lookup step rather than a clean 401.
+   Fix: Resolved automatically once the OAuth token was renewed.
+   Note: The spreadsheet (1ZP3TWy5kzvkKegxTEwzoVigOHFFBXC5tIsIh1KFFuzg) still exists with the correct
+   tab name "Sheet1" — no node config changes were needed.
+
+3. Google Places API Key Expired (API_KEY_INVALID)
+   Root cause: The GOOGLE_PLACES_API_KEY stored in n8n's environment variable had expired.
+   How the key flows: Read Config1 (Code node) reads $env.GOOGLE_PLACES_API_KEY and passes it as the
+   X-Goog-Api-Key header to all Places API HTTP Request nodes.
+   Fix: Regenerate the key in Google Cloud Console → APIs & Services → Credentials, then update in:
+     - /docker/n8n/docker-compose.yml on the server (restart with: cd /docker/n8n && docker compose up -d --force-recreate)
+     - lead-finder/.env.local (local dev, for reference)
+   Note: Service account key creation was blocked by org policy (iam.disableServiceAccountKeyCreation),
+   so a service account approach was not viable.
+
+4. Enrich DM — Vercel 500 Error
+   Root cause: Two environment variables required by /api/enrich-dm were missing from Vercel's production
+   environment. The other routes use N8N_WEBHOOK_URL (which was set), but enrich-dm uses different vars.
+   Missing vars:
+     - N8N_WEBHOOK_URL_BASE
+     - ENRICH_DM_SECRET
+   Fix: Add both to Vercel dashboard → lead-finder project → Settings → Environment Variables,
+   then redeploy.
+
+System State
+============
+Component                        Status
+-----------------------------------------------------------------------
+Google Sheets OAuth credential   Fixed — app published, token renewed
+Lead Finder workflow             Working
+Lead Finder - Read workflow      Working
+Lead Finder - Clear workflow     Working
+Lead Finder - Enrich DM          Pending Vercel env var fix (#4 above)
+Google Places API key            Pending key regeneration (#3 above)
+Vercel env vars                  N8N_WEBHOOK_URL_BASE + ENRICH_DM_SECRET missing
+
+Key Architecture Notes
+======================
+- API key and sheet ID are centralised in the Read Config1 Code node via $env variables — not hardcoded.
+- The Lead Finder - Read workflow accepts sheet_id in the POST body; falls back to the hardcoded default.
+- The enrich-dm route has a module-level 10-minute cooldown guard (resets on cold start) plus an n8n-side
+  job lock as the primary concurrency guard.
+
+Pending Items (Carried Forward)
+================================
+- Confirm Places API key regeneration works end-to-end
+- Confirm enrich-dm works after Vercel env vars are added and redeployed
+- Google Sheets auth: consider long-term monitoring now that OAuth is in Production mode
+  (tokens refresh automatically as long as n8n uses them regularly; 6-month idle timeout)
