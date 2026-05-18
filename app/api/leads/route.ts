@@ -40,9 +40,16 @@ export async function GET(req: NextRequest) {
     try {
       const dmData = await dmRes.json();
       const dm = dmData.dm || {};
-      data.leads = (data.leads || []).map((lead: Record<string, string>) => ({
-        ...lead, ...(dm[lead.place_id] || {}),
-      }));
+      data.leads = (data.leads || []).flatMap((lead: Record<string, string>) => {
+        const matches = dm[lead.place_id];
+        if (Array.isArray(matches) && matches.length > 0) {
+          return matches.map((person: Record<string, string>) => ({ ...lead, ...person }));
+        }
+        if (matches && typeof matches === 'object') {
+          return [{ ...lead, ...matches }];
+        }
+        return [lead];
+      });
     } catch { /* DM merge failed — return leads without enrichment */ }
   }
 

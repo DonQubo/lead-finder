@@ -48,5 +48,6 @@ export async function POST(req: NextRequest) {
   if (!response.ok) return NextResponse.json({ error: `Upstream: ${response.status}` }, { status: response.status });
   const data = await response.json();
   if (data.status === 'started') lastEnrichAt = now;
-  return NextResponse.json(data, { status: data.status === 'started' ? 202 : 409 });
+  const statusCode = data.status === 'started' ? 202 : data.status === 'in_progress' ? 409 : 200;
+  return NextResponse.json(data, { status: statusCode });
 }

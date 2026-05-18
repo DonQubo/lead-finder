@@ -192,34 +192,36 @@
       }
     },
     {
-      "id": "enrich-buildtavily",
-      "name": "Build Tavily Query",
+      "id": "enrich-buildserpapi",
+      "name": "Build SerpApi Query",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [2448, 304],
       "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst lead = $input.first().json;\nstore[execId].pendingLead = { _rowNumber: lead._rowNumber, place_id: lead.place_id || '', name: lead.name || '' };\nstore[execId].leadInfo = { name: lead.name || '', address: lead.address || '', phone: lead.phone || '', website: lead.website || '' };\nconst location = (lead.address || '').split(',').slice(-2).join(',').trim();\nconst websitePart = lead.website ? ' ' + lead.website.replace(/^https?:\\/\\//, '').replace(/\\/$/, '') : '';\nconst query = (lead.name || '') + ' ' + location + websitePart + ' owner CEO director email LinkedIn phone number';\nreturn [{ json: { tavily_body: { api_key: $env.TAVILY_API_KEY, query: query.trim(), search_depth: 'basic', max_results: 3, include_answer: true, include_raw_content: false } }}];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst lead = $input.first().json;\nstore[execId].pendingLead = { _rowNumber: lead._rowNumber, place_id: lead.place_id || '', name: lead.name || '' };\nstore[execId].leadInfo = { name: lead.name || '', address: lead.address || '', phone: lead.phone || '', website: lead.website || '' };\nconst location = (lead.address || '').split(',').slice(-2).join(',').trim();\nconst domain = lead.website ? lead.website.replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '') : '';\nconst websitePart = domain ? ' ' + domain : '';\nconst query = '\"' + (lead.name || '') + '\" ' + location + websitePart + ' owner founder CEO director manager LinkedIn email phone';\nreturn [{ json: { serpapi_query: { api_key: $env.SERPAPI_API_KEY, q: query.trim(), num: '10' } }}];"
       }
     },
     {
-      "id": "enrich-calltavily",
-      "name": "Call Tavily",
+      "id": "enrich-callserpapi",
+      "name": "Call SerpApi",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [2672, 304],
       "continueOnFail": true,
       "parameters": {
-        "method": "POST",
-        "url": "https://api.tavily.com/search",
-        "sendHeaders": true,
-        "headerParameters": {
+        "method": "GET",
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            { "name": "engine", "value": "google" },
+            { "name": "q", "value": "={{ $json.serpapi_query.q }}" },
+            { "name": "api_key", "value": "={{ $json.serpapi_query.api_key }}" },
+            { "name": "num", "value": "={{ $json.serpapi_query.num }}" },
+            { "name": "hl", "value": "en" },
+            { "name": "gl", "value": "us" }
           ]
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.tavily_body) }}",
         "options": {}
       }
     },
@@ -230,28 +232,52 @@
       "typeVersion": 2,
       "position": [2884, 480],
       "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst leadInfo = store[execId].leadInfo || {};\nstore[execId].broadResults = $input.first().json;\nlet secondQuery;\nif (leadInfo.website) {\n  const domain = leadInfo.website.replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '');\n  secondQuery = 'site:' + domain + ' owner contact about team phone';\n} else {\n  const location = (leadInfo.address || '').split(',').slice(-2).join(',').trim();\n  secondQuery = '\"' + (leadInfo.name || '') + '\" ' + location + ' owner founder director phone site:linkedin.com OR site:facebook.com';\n}\nreturn [{ json: { tavily_site_body: { api_key: $env.TAVILY_API_KEY, query: secondQuery.trim(), search_depth: 'basic', max_results: 3, include_answer: true, include_raw_content: false }}}];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nif (!store[execId]) store[execId] = {};\nconst leadInfo = store[execId].leadInfo || {};\nconst broadResults = $input.first().json;\nstore[execId].broadResults = broadResults;\nlet secondQuery;\nlet domain = '';\nif (leadInfo.website) {\n  domain = leadInfo.website.replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '');\n  secondQuery = 'site:' + domain + ' owner founder director manager team about contact email phone';\n} else {\n  const location = (leadInfo.address || '').split(',').slice(-2).join(',').trim();\n  secondQuery = '\"' + (leadInfo.name || '') + '\" ' + location + ' owner founder director manager LinkedIn Facebook';\n}\nconst firstPageText = JSON.stringify((broadResults.organic_results || []).slice(0, 5));\nconst hasDecisionHint = /\\b(owner|founder|ceo|director|manager|principal|partner|practice manager)\\b/i.test(firstPageText);\nconst hasOfficialDomain = domain ? firstPageText.toLowerCase().includes(domain.toLowerCase()) : false;\nconst needsTargetedSearch = !hasDecisionHint || (domain && !hasOfficialDomain);\nreturn [{ json: { needs_targeted_search: needsTargetedSearch, serpapi_site_query: { api_key: $env.SERPAPI_API_KEY, q: secondQuery.trim(), num: '10' }}}];"
       }
     },
     {
-      "id": "enrich-calltavily2",
-      "name": "Call Tavily Site",
+      "id": "enrich-if-targeted-search",
+      "name": "IF Needs Targeted Search",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3104, 480],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "targeted-search-check",
+              "leftValue": "={{ $json.needs_targeted_search === true }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "enrich-callserpapi2",
+      "name": "Call SerpApi Site",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [3104, 480],
+      "position": [3328, 480],
       "continueOnFail": true,
       "parameters": {
-        "method": "POST",
-        "url": "https://api.tavily.com/search",
-        "sendHeaders": true,
-        "headerParameters": {
+        "method": "GET",
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            { "name": "engine", "value": "google" },
+            { "name": "q", "value": "={{ $json.serpapi_site_query.q }}" },
+            { "name": "api_key", "value": "={{ $json.serpapi_site_query.api_key }}" },
+            { "name": "num", "value": "={{ $json.serpapi_site_query.num }}" },
+            { "name": "hl", "value": "en" },
+            { "name": "gl", "value": "us" }
           ]
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.tavily_site_body) }}",
         "options": {}
       }
     },
@@ -262,7 +288,7 @@
       "typeVersion": 2,
       "position": [2896, 304],
       "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst leadInfo = store[execId]?.leadInfo || {};\nconst broadResult = store[execId]?.broadResults || {};\nconst siteResult = $input.first().json;\nfunction extractContext(result) {\n  const answer = (result.answer || '').substring(0, 400);\n  const results = (result.results || []).slice(0, 3).map(r => r.title + '\\n' + r.url + '\\n' + (r.content || '').substring(0, 300)).join('\\n---\\n');\n  return [answer, results].filter(Boolean).join('\\n\\n');\n}\nconst broadContext = extractContext(broadResult);\nconst siteContext = extractContext(siteResult);\nconst contextBlock = [broadContext, siteContext ? '=== Targeted Search ===\\n' + siteContext : ''].filter(Boolean).join('\\n\\n');\nconst prompt = 'Business: ' + (leadInfo.name || 'N/A') + ', ' + (leadInfo.address || 'N/A') + '\\nWebsite: ' + (leadInfo.website || 'N/A') + '\\n\\nSearch results:\\n' + (contextBlock || 'No results') + '\\n\\nExtract the decision maker (owner, CEO, Director) using ONLY the results above. Return N/A for any field not supported by results.\\n\\nFormat:\\nPERSON_NAME: [name or N/A]\\nPERSON_TITLE: [title or N/A]\\nPERSON_PHONE: [direct phone or N/A]\\nPERSON_EMAIL: [email or N/A]\\nPERSON_LINKEDIN: [URL or N/A]\\nPERSON_INSTAGRAM: [URL or N/A]\\nPERSON_TWITTER: [URL or N/A]';\nreturn [{ json: { llm_body: { model: 'gpt-4o-mini', max_tokens: 300, temperature: 0.1, messages: [{ role: 'user', content: prompt }] }}}];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst leadInfo = store[execId]?.leadInfo || {};\nconst broadResult = store[execId]?.broadResults || {};\nconst siteResult = $input.first().json;\nfunction extractContext(result) {\n  const parts = [];\n  if (result.error) parts.push('Search error: ' + result.error);\n  if (result.answer_box) parts.push('Answer box: ' + JSON.stringify(result.answer_box).substring(0, 700));\n  if (result.knowledge_graph) parts.push('Knowledge graph: ' + JSON.stringify(result.knowledge_graph).substring(0, 900));\n  const organic = (result.organic_results || []).slice(0, 8).map(r => [r.title, r.link, r.snippet, r.rich_snippet ? JSON.stringify(r.rich_snippet).substring(0, 300) : ''].filter(Boolean).join('\\n')).join('\\n---\\n');\n  if (organic) parts.push('Organic results:\\n' + organic);\n  return parts.join('\\n\\n').substring(0, 5000);\n}\nconst broadContext = extractContext(broadResult);\nconst siteContext = extractContext(siteResult);\nconst contextBlock = [broadContext, siteContext ? '=== Targeted Search ===\\n' + siteContext : ''].filter(Boolean).join('\\n\\n');\nconst prompt = 'Business: ' + (leadInfo.name || 'N/A') + ', ' + (leadInfo.address || 'N/A') + '\\nWebsite: ' + (leadInfo.website || 'N/A') + '\\n\\nSerpApi Google search results:\\n' + (contextBlock || 'No results') + '\\n\\nExtract every supported key decision maker for this business, up to 5 people. Prefer owner, founder, CEO, managing director, director, general manager, principal, partner, or practice manager. Use ONLY the search results above. Do not guess. Return N/A for fields not supported by results.\\n\\nReturn JSON only in this exact shape: {\"people\":[{\"person_name\":\"N/A\",\"person_title\":\"N/A\",\"person_phone\":\"N/A\",\"person_email\":\"N/A\",\"person_linkedin\":\"N/A\",\"person_instagram\":\"N/A\",\"person_twitter\":\"N/A\"}]}';\nreturn [{ json: { llm_body: { model: 'gpt-4o-mini', max_tokens: 900, temperature: 0.1, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }}}];"
       }
     },
     {
@@ -295,7 +321,7 @@
       "typeVersion": 2,
       "position": [3328, 304],
       "parameters": {
-        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst pendingLead = store[execId]?.pendingLead || {};\nif (store[execId]) delete store[execId].pendingLead;\n\nconst response = $input.first().json;\nconst choices = response?.choices;\nconst text = choices?.[0]?.message?.content?.trim() || '';\n\nif (response?.error || !choices || !Array.isArray(choices) || choices.length === 0 || !text) {\n  return [{ json: { ...pendingLead, _should_update: false } }];\n}\n\nfunction extract(label) {\n  const m = text.match(new RegExp(label + ':\\\\s*(.+)', 'i'));\n  if (!m) return 'N/A';\n  const v = m[1].trim();\n  return /^n\\/a$/i.test(v) || !v ? 'N/A' : v.substring(0, 500);\n}\n\nreturn [{ json: {\n  ...pendingLead,\n  person_name:      extract('PERSON_NAME'),\n  person_title:     extract('PERSON_TITLE'),\n  person_phone:     extract('PERSON_PHONE'),\n  person_email:     extract('PERSON_EMAIL'),\n  person_linkedin:  extract('PERSON_LINKEDIN'),\n  person_instagram: extract('PERSON_INSTAGRAM'),\n  person_twitter:   extract('PERSON_TWITTER'),\n  _should_update: true\n}}];"
+        "jsCode": "const execId = $execution.id;\nconst store = $getWorkflowStaticData('global');\nconst pendingLead = store[execId]?.pendingLead || {};\nif (store[execId]) delete store[execId].pendingLead;\n\nconst response = $input.first().json;\nconst choices = response?.choices;\nconst text = choices?.[0]?.message?.content?.trim() || '';\n\nif (response?.error || !choices || !Array.isArray(choices) || choices.length === 0 || !text) {\n  return [{ json: { ...pendingLead, _should_update: false } }];\n}\n\nfunction clean(value) {\n  const v = String(value || '').trim();\n  return /^n\\/a$/i.test(v) || !v ? 'N/A' : v.substring(0, 500);\n}\n\nfunction extract(label) {\n  const m = text.match(new RegExp(label + ':\\\\s*(.+)', 'i'));\n  return m ? clean(m[1]) : 'N/A';\n}\n\nlet people = [];\ntry {\n  const parsed = JSON.parse(text);\n  people = Array.isArray(parsed.people) ? parsed.people : [];\n} catch (e) {\n  people = [{\n    person_name: extract('PERSON_NAME'),\n    person_title: extract('PERSON_TITLE'),\n    person_phone: extract('PERSON_PHONE'),\n    person_email: extract('PERSON_EMAIL'),\n    person_linkedin: extract('PERSON_LINKEDIN'),\n    person_instagram: extract('PERSON_INSTAGRAM'),\n    person_twitter: extract('PERSON_TWITTER')\n  }];\n}\n\nconst seen = new Set();\nconst rows = people\n  .map(person => ({\n    ...pendingLead,\n    person_name: clean(person.person_name),\n    person_title: clean(person.person_title),\n    person_phone: clean(person.person_phone),\n    person_email: clean(person.person_email),\n    person_linkedin: clean(person.person_linkedin),\n    person_instagram: clean(person.person_instagram),\n    person_twitter: clean(person.person_twitter),\n    _should_update: true\n  }))\n  .filter(person => person.person_name !== 'N/A')\n  .filter(person => {\n    const key = [person.person_name, person.person_title, person.person_email, person.person_linkedin].join('|').toLowerCase();\n    if (seen.has(key)) return false;\n    seen.add(key);\n    return true;\n  })\n  .slice(0, 5);\n\nif (rows.length === 0) return [{ json: { ...pendingLead, _should_update: false } }];\nreturn rows.map(row => ({ json: row }));"
       }
     },
     {
@@ -393,7 +419,7 @@
       "typeVersion": 2,
       "position": [688, 600],
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst allRows = (raw.error || !raw.values) ? [] : (raw.values || []);\nconst dm = {};\nallRows.forEach((row, i) => {\n  if (i === 0) return;\n  const placeId = (row && row[0]) || '';\n  if (placeId) {\n    dm[placeId] = {\n      person_name:      (row[2] || ''),\n      person_title:     (row[3] || ''),\n      person_phone:     (row[4] || ''),\n      person_email:     (row[5] || ''),\n      person_linkedin:  (row[6] || ''),\n      person_instagram: (row[7] || ''),\n      person_twitter:   (row[8] || '')\n    };\n  }\n});\nreturn [{ json: { dm } }];"
+        "jsCode": "const raw = $input.first().json;\nconst allRows = (raw.error || !raw.values) ? [] : (raw.values || []);\nconst dm = {};\nallRows.forEach((row, i) => {\n  if (i === 0) return;\n  const placeId = (row && row[0]) || '';\n  if (placeId) {\n    if (!dm[placeId]) dm[placeId] = [];\n    dm[placeId].push({\n      person_name:      (row[2] || ''),\n      person_title:     (row[3] || ''),\n      person_phone:     (row[4] || ''),\n      person_email:     (row[5] || ''),\n      person_linkedin:  (row[6] || ''),\n      person_instagram: (row[7] || ''),\n      person_twitter:   (row[8] || '')\n    });\n  }\n});\nreturn [{ json: { dm } }];"
       }
     },
     {
@@ -434,11 +460,17 @@
         [{ "node": "Wait 15s", "type": "main", "index": 0 }]
       ]
     },
-    "Wait 15s": { "main": [[{ "node": "Build Tavily Query", "type": "main", "index": 0 }]] },
-    "Build Tavily Query": { "main": [[{ "node": "Call Tavily", "type": "main", "index": 0 }]] },
-    "Call Tavily": { "main": [[{ "node": "Stash Broad Results", "type": "main", "index": 0 }]] },
-    "Stash Broad Results": { "main": [[{ "node": "Call Tavily Site", "type": "main", "index": 0 }]] },
-    "Call Tavily Site": { "main": [[{ "node": "Build LLM Body", "type": "main", "index": 0 }]] },
+    "Wait 15s": { "main": [[{ "node": "Build SerpApi Query", "type": "main", "index": 0 }]] },
+    "Build SerpApi Query": { "main": [[{ "node": "Call SerpApi", "type": "main", "index": 0 }]] },
+    "Call SerpApi": { "main": [[{ "node": "Stash Broad Results", "type": "main", "index": 0 }]] },
+    "Stash Broad Results": { "main": [[{ "node": "IF Needs Targeted Search", "type": "main", "index": 0 }]] },
+    "IF Needs Targeted Search": {
+      "main": [
+        [{ "node": "Call SerpApi Site", "type": "main", "index": 0 }],
+        [{ "node": "Build LLM Body", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call SerpApi Site": { "main": [[{ "node": "Build LLM Body", "type": "main", "index": 0 }]] },
     "Build LLM Body": { "main": [[{ "node": "Call LLM", "type": "main", "index": 0 }]] },
     "Call LLM": { "main": [[{ "node": "Parse DM Response", "type": "main", "index": 0 }]] },
     "Parse DM Response": { "main": [[{ "node": "IF Should Update", "type": "main", "index": 0 }]] },

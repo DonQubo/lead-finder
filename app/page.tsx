@@ -196,7 +196,7 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
         </thead>
         <tbody>
           {leads.map((lead, i) => (
-            <tr key={lead.place_id || i} className={i % 2 === 0 ? '' : 'bg-zinc-50'}>
+            <tr key={`${lead.place_id || i}-${lead.person_email || lead.person_name || i}`} className={i % 2 === 0 ? '' : 'bg-zinc-50'}>
               <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{lead.name}</td>
               <td className="px-4 py-3 text-zinc-600 max-w-[200px]">{lead.address}</td>
               <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{lead.phone || '—'}</td>
@@ -319,12 +319,15 @@ export default function Home() {
   const [filterPriceLevels, setFilterPriceLevels] = useState<string[]>([]);
 
   useEffect(() => {
-    const savedSheet = localStorage.getItem(SHEET_KEY);
-    if (savedSheet) { setSheetId(savedSheet); setSheetInput(savedSheet); }
-    try {
-      const h = localStorage.getItem(HISTORY_KEY);
-      if (h) setSearchHistory(JSON.parse(h));
-    } catch {}
+    const timer = window.setTimeout(() => {
+      const savedSheet = localStorage.getItem(SHEET_KEY);
+      if (savedSheet) { setSheetId(savedSheet); setSheetInput(savedSheet); }
+      try {
+        const h = localStorage.getItem(HISTORY_KEY);
+        if (h) setSearchHistory(JSON.parse(h));
+      } catch {}
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const activeSheetId   = sheetId || DEFAULT_SHEET_ID;
@@ -401,6 +404,7 @@ export default function Home() {
   async function handleLoadLeads() {
     setLoadingLeads(true);
     setLeadsError(null);
+    setEnrichMsg('');
     try {
       const res = await fetch(`/api/leads?sheet_id=${activeSheetId}`);
       if (!res.ok) {
@@ -450,7 +454,7 @@ export default function Home() {
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-zinc-200">
           {(['search', 'sheet'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
+            <button key={tab} onClick={() => { setActiveTab(tab); setEnrichMsg(''); }}
               className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === tab
                   ? 'bg-white border border-b-white border-zinc-200 text-zinc-900 -mb-px'
@@ -625,13 +629,18 @@ export default function Home() {
                         });
                         const data = await res.json();
                         if (res.status === 202) {
-                          setEnrichMsg(`Enriching ${data.total ?? '?'} leads in background. Refresh table in a few minutes.`);
+                          const total = data.total ?? 0;
+                          const mins = Math.ceil(total * 15 / 60);
+                          const timeStr = mins <= 5 ? 'a few minutes' : `~${mins} minutes`;
+                          setEnrichMsg(`Enriching ${total} leads in background. Refresh table in ${timeStr}.`);
                         } else if (res.status === 409) {
                           setEnrichMsg('Enrichment is already running. Check back in a few minutes.');
+                        } else if (res.status === 429) {
+                          setEnrichMsg('Enrichment was triggered recently. Try again in a few minutes.');
                         } else if (res.status === 200 && data.status === 'ok') {
                           setEnrichMsg('Nothing to enrich — all leads already have decision maker data.');
                         } else {
-                          setEnrichMsg(`Error: ${data.error}`);
+                          setEnrichMsg(`Error: ${data.error ?? 'Unknown error'}`);
                         }
                       } catch {
                         setEnrichMsg('Failed to start enrichment.');
@@ -639,7 +648,7 @@ export default function Home() {
                         setEnriching(false);
                       }
                     }}
-                    disabled={enriching || (allLeads !== null && allLeads.length === 0)}
+                    disabled={enriching || allLeads === null || allLeads.length === 0}
                     className="px-3 py-1.5 text-sm rounded-md bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors whitespace-nowrap"
                   >
                     {enriching ? 'Starting…' : 'Find Decision Makers'}
