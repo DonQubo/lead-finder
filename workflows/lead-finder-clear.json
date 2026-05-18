@@ -1,0 +1,85 @@
+{
+  "name": "Lead Finder - Clear",
+  "nodes": [
+    {
+      "id": "node-webhook-clear",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-finder-clear",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "7c63202e-b96d-4659-80ea-73a9b3ec3c11"
+    },
+    {
+      "id": "node-clear-range",
+      "name": "Clear Sheet Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [480, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.body.sheet_id || '1ZP3TWy5kzvkKegxTEwzoVigOHFFBXC5tIsIh1KFFuzg' }}/values/Sheet1!A2:Z:clear",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IOYcAf4cVdbQtjgP",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "node-clear-sheet3",
+      "name": "Clear Sheet3 Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [600, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Webhook').item.json.body.sheet_id || '1ZP3TWy5kzvkKegxTEwzoVigOHFFBXC5tIsIh1KFFuzg' }}/values/Sheet3!A2:Z:clear",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IOYcAf4cVdbQtjgP",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "node-respond-clear",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [860, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\":true}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Clear Sheet Data", "type": "main", "index": 0}]]
+    },
+    "Clear Sheet Data": {
+      "main": [[{"node": "Clear Sheet3 Data", "type": "main", "index": 0}]]
+    },
+    "Clear Sheet3 Data": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
